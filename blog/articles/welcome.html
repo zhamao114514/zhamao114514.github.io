@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>欢迎来到我的博客 - 我的博客</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  min-height: 100vh;
+}
+
+/* 背景图，与首页一致 */
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: url('../背景.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+.background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.6) 100%);
+}
+
+/* 文章容器 */
+.article-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 48px 24px 60px;
+}
+
+/* 返回按钮 */
+.back-btn {
+  display: inline-block;
+  margin-bottom: 28px;
+  padding: 8px 20px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 14px;
+  backdrop-filter: blur(8px);
+  transition: background 0.3s, transform 0.2s;
+}
+.back-btn:hover {
+  background: rgba(255,255,255,0.2);
+  transform: translateX(-4px);
+}
+
+/* 文章卡片 */
+.article-card {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 44px 48px;
+  animation: fadeInUp 0.8s ease both;
+}
+
+.article-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.article-meta {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+/* 正文排版 */
+.article-content p {
+  font-size: 16px;
+  line-height: 1.9;
+  color: rgba(255,255,255,0.88);
+  margin-bottom: 20px;
+}
+
+.article-content h2 {
+  font-size: 21px;
+  margin: 36px 0 16px;
+  padding-left: 12px;
+  border-left: 4px solid rgba(255,255,255,0.5);
+}
+
+.article-content blockquote {
+  margin: 24px 0;
+  padding: 16px 24px;
+  background: rgba(255,255,255,0.06);
+  border-left: 3px solid rgba(255,255,255,0.35);
+  border-radius: 0 8px 8px 0;
+  color: rgba(255,255,255,0.75);
+  font-style: italic;
+}
+
+.article-content code {
+  background: rgba(0,0,0,0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .article-wrap { padding: 32px 16px 48px; }
+  .article-card { padding: 28px 24px; }
+  .article-title { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+
+<div class="background"></div>
+
+<div class="article-wrap">
+  <a class="back-btn" href="../index.html">← 返回首页</a>
+
+  <article class="article-card">
+    <h1 class="article-title">欢迎来到我的博客</h1>
+    <div class="article-meta">2026-08-31 · 随笔</div>
+
+    <div class="article-content">
+      <p>你好，欢迎来到我的博客！这里是我记录生活、分享技术、整理思考的小角落。</p>
+
+      <p>这个博客是一个纯静态网站，不需要服务器、不需要数据库，一个 HTML 文件就能跑起来。所有文章都以 <code>.html</code> 文件的形式存放在 <code>articles/</code> 文件夹中，通过首页的文章卡片点击访问。</p>
+
+      <h2>关于这个博客</h2>
+      <p>你现在看到的每一篇文章，都是一个独立的 HTML 页面。首页的文章列表卡片点击后会跳转到对应的文章页面，文章页面左上角有「返回首页」按钮可以回到列表。</p>
+
+      <blockquote>写博客的意义不在于有多少人看，而在于把自己的思考整理成文字的那个过程。</blockquote>
+
+      <h2>后续计划</h2>
+      <p>我会在这里持续更新，内容可能包括：</p>
+      <p>· 技术学习笔记<br>· 生活随笔感悟<br>· 读书观影记录<br>· 各种奇思妙想</p>
+
+      <p>感谢你的访问，希望这里的内容对你有所帮助或启发。如果有什么想交流的，随时可以通过首页的联系方式找到我。</p>
+    </div>
+  </article>
+</div>
+
+</body>
+</html>

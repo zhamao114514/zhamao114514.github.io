@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>网站导航 - 工具箱</title>
+  <style>
+    /* ── 设计令牌（与首页保持一致）──────────────────────────── */
+    :root {
+      --bg:            #08080a;
+      --surface:       rgba(255, 255, 255, 0.022);
+      --surface-hover: rgba(255, 255, 255, 0.045);
+      --fill:          rgba(255, 255, 255, 0.05);
+      --line:          rgba(255, 255, 255, 0.075);
+      --line-strong:   rgba(255, 255, 255, 0.17);
+      --text:          #f0f0f2;
+      --muted:         #8a8a93;
+      --faint:         #5a5a63;
+      --live:          #3ddc84;
+      --ease:          cubic-bezier(.22, .8, .24, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                   "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      letter-spacing: .01em;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      padding: 40px 28px 56px;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(60rem 32rem at 50% -12%, rgba(150, 165, 200, .10), transparent 62%),
+        radial-gradient(38rem 22rem at 88% 4%,  rgba(120, 140, 190, .05), transparent 60%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 9;
+      pointer-events: none;
+      opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::selection { background: rgba(255, 255, 255, .16); }
+
+    a { color: inherit; text-decoration: none; }
+
+    :focus-visible {
+      outline: 1px solid var(--line-strong);
+      outline-offset: 3px;
+      border-radius: 10px;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: min(1020px, 100%);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 96px);
+    }
+
+    /* ── 顶栏 ──────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: .95rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+    }
+
+    .brand .mark {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 0 4px rgba(61, 220, 132, .10);
+      animation: breathe 3.2s var(--ease) infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: .55; }
+      50%      { opacity: 1; }
+    }
+
+    .brand .slash { color: var(--faint); font-weight: 400; }
+    .brand .mark-sub { color: var(--muted); font-weight: 400; }
+
+    .nav-links { display: flex; gap: 26px; }
+
+    .nav-links a {
+      position: relative;
+      font-size: .88rem;
+      color: var(--muted);
+      transition: color .25s var(--ease);
+    }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -4px;
+      width: 100%;
+      height: 1px;
+      background: currentColor;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .3s var(--ease);
+    }
+
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+
+    /* ── 标题区 ────────────────────────────────────────────── */
+    .hero { padding: 72px 0 40px; }
+
+    .eyebrow {
+      font-size: .72rem;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 12px;
+    }
+
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.9rem, 4.6vw, 2.4rem);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+    }
+
+    .hero p { margin: 0; max-width: 52ch; color: var(--muted); font-size: 1rem; }
+
+    /* ── 导航卡片 ──────────────────────────────────────────── */
+    .site-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .site-card {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 26px 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      transition: background .3s var(--ease), border-color .3s var(--ease),
+                  transform .3s var(--ease);
+    }
+
+    .site-card:hover {
+      background: var(--surface-hover);
+      border-color: var(--line-strong);
+      transform: translateY(-2px);
+    }
+
+    .site-card .ico {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      transition: color .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .site-card .ico svg { width: 19px; height: 19px; }
+    .site-card:hover .ico { color: var(--text); border-color: var(--line-strong); }
+
+    .site-card .name { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
+
+    .site-card .desc { flex: 1; color: var(--muted); font-size: .86rem; line-height: 1.6; }
+
+    .site-card .domain {
+      font-size: .78rem;
+      color: var(--faint);
+      word-break: break-all;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 描边按钮，悬停填充 —— 替代原来的实心蓝 */
+    .site-card .go-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      align-self: stretch;
+      padding: 11px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 500;
+      letter-spacing: .04em;
+      transition: color .3s var(--ease), border-color .3s var(--ease),
+                  background .3s var(--ease);
+    }
+
+    .site-card .go-btn svg { width: 15px; height: 15px; }
+    .site-card:hover .go-btn { color: var(--text); border-color: var(--line-strong); background: var(--fill); }
+
+    /* ── 页脚 ──────────────────────────────────────────────── */
+    .footnote {
+      margin-top: auto;
+      padding-top: 40px;
+      font-size: .78rem;
+      color: var(--faint);
+    }
+
+    /* ── 入场动画 ──────────────────────────────────────────── */
+    .rise {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: rise .8s var(--ease) forwards;
+    }
+    .d1 { animation-delay: .05s; }
+    .d2 { animation-delay: .13s; }
+
+    @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ── 响应式 ────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      body { padding: 28px 20px 40px; }
+      .hero { padding: 48px 0 32px; }
+      .nav-links { gap: 18px; }
+      .site-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001s !important;
+      }
+      .rise { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar rise">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>沫友乾</span>
+        <span class="slash">/</span>
+        <span class="mark-sub">网站导航</span>
+      </div>
+      <nav class="nav-links">
+        <a href="../../index.html">首页</a>
+        <a href="../index.html">← 返回工具箱</a>
+      </nav>
+    </header>
+
+    <section class="hero rise d1">
+      <div class="eyebrow">Navigation</div>
+      <h1>网站导航</h1>
+      <p>点击下方按钮，一键直达沫友乾的各个网站</p>
+    </section>
+
+    <main class="site-grid rise d2">
+      <a class="site-card" href="http://filecodebox.moyouqian.top/" target="_blank" rel="noopener">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.5 7.5v9l-8.5 4.5-8.5-4.5v-9L12 3z"/>
+            <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>
+          </svg>
+        </span>
+        <span class="name">文件快递柜</span>
+        <span class="desc">大文件分享工具，上传即生成取件码，轻松传递大文件</span>
+        <span class="domain">http://filecodebox.moyouqian.top/</span>
+        <span class="go-btn">
+          进入网站
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 17 17 7M8 7h9v9"/>
+          </svg>
+        </span>
+      </a>
+
+      <a class="site-card" href="https://passport2.chaoxing.com/" target="_blank" rel="noopener">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 18.5h9.5a3.75 3.75 0 0 0 .4-7.48A5.5 5.5 0 0 0 6.4 9.72 3.9 3.9 0 0 0 7 18.5z"/>
+          </svg>
+        </span>
+        <span class="name">学习通</span>
+        <span class="desc">学习通登录页</span>
+        <span class="domain">https://passport2.chaoxing.com/</span>
+        <span class="go-btn">
+          进入网站
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 17 17 7M8 7h9v9"/>
+          </svg>
+        </span>
+      </a>
+    </main>
+
+    <div class="footnote">所有链接均为外部网站，点击后将在新标签页中打开</div>
+  </div>
+</body>
+</html>

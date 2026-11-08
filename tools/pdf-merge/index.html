@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="把多个 PDF 文件按顺序合并成一个文件，支持拖拽排序，纯本地处理不上传">
+  <title>PDF 合并 - 沫友乾的个人站</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='5' width='20' height='14' rx='3' fill='%2308080a' stroke='%233ddc84' stroke-width='1.6'/%3E%3Ctext x='6' y='16.5' font-family='Arial' font-size='8' font-weight='700' fill='%233ddc84'%3EPDF%3C/text%3E%3C/svg%3E">
+  <style>
+    /* ── 设计令牌（与首页 / 工具箱同一套）──────────────────── */
+    :root {
+      --bg:            #08080a;
+      --surface:       rgba(255, 255, 255, 0.022);
+      --surface-hover: rgba(255, 255, 255, 0.045);
+      --fill:          rgba(255, 255, 255, 0.05);
+      --line:          rgba(255, 255, 255, 0.075);
+      --line-strong:   rgba(255, 255, 255, 0.17);
+      --text:          #f0f0f2;
+      --muted:         #8a8a93;
+      --faint:         #5a5a63;
+      --live:          #3ddc84;
+      --warn:          #e0b64c;
+      --danger:        #e0685a;
+      --ease:          cubic-bezier(.22, .8, .24, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                   "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      letter-spacing: .01em;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      padding: 40px 28px 56px;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(60rem 32rem at 50% -12%, rgba(150, 165, 200, .10), transparent 62%),
+        radial-gradient(38rem 22rem at 88% 4%,  rgba(120, 140, 190, .05), transparent 60%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 9;
+      pointer-events: none;
+      opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::selection { background: rgba(255, 255, 255, .16); }
+
+    a { color: inherit; text-decoration: none; }
+
+    :focus-visible {
+      outline: 1px solid var(--line-strong);
+      outline-offset: 3px;
+      border-radius: 10px;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: min(880px, 100%);
+      margin: 0 auto;
+    }
+
+    /* ── 顶栏 ──────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 22px;
+      margin-bottom: 46px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: .95rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+    }
+
+    .brand .mark {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 0 4px rgba(61, 220, 132, .10);
+      animation: breathe 3.2s var(--ease) infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: .55; }
+      50%      { opacity: 1; }
+    }
+
+    .brand .slash { color: var(--faint); font-weight: 400; }
+    .brand .mark-sub { color: var(--muted); font-weight: 400; }
+
+    .nav-links { display: flex; gap: 26px; }
+
+    .nav-links a {
+      position: relative;
+      font-size: .88rem;
+      color: var(--muted);
+      transition: color .25s var(--ease);
+    }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -4px;
+      width: 100%;
+      height: 1px;
+      background: currentColor;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .3s var(--ease);
+    }
+
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+    .nav-links a.active { color: var(--text); }
+    .nav-links a.active::after { transform: scaleX(1); }
+
+    /* ── 页头 ──────────────────────────────────────────────── */
+    .page-head { margin-bottom: 24px; }
+
+    .eyebrow {
+      font-size: .72rem;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 10px;
+    }
+
+    .page-head h1 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 10px;
+      font-size: clamp(1.6rem, 4vw, 2rem);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      line-height: 1.2;
+    }
+
+    .page-head h1 svg { width: 22px; height: 22px; flex: none; color: var(--muted); }
+    .page-head p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+    /* ── 卡片 / 面板 ───────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      transition: background .3s var(--ease), border-color .3s var(--ease),
+                  transform .3s var(--ease);
+    }
+
+    .card:hover {
+      background: var(--surface-hover);
+      border-color: var(--line-strong);
+      transform: translateY(-2px);
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── 分区小标题 ────────────────────────────────────────── */
+    .step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+
+    #step-list .step-head, #step-result .step-head {
+      margin-top: 4px;
+    }
+
+    .step-num {
+      flex: none;
+      display: grid;
+      place-items: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--faint);
+      font-size: .72rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .step-title {
+      font-size: .72rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+
+    /* ── 选择 PDF（主按钮 / 虚线投放区）────────────────────── */
+    .pick-btn {
+      display: block;
+      width: 100%;
+      padding: 30px 20px;
+      font: inherit;
+      font-size: .95rem;
+      font-weight: 500;
+      color: var(--text);
+      text-align: center;
+      background: var(--fill);
+      border: 1px dashed var(--line-strong);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .pick-btn:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .32); }
+    .pick-btn svg { width: 19px; height: 19px; vertical-align: -4px; margin-right: 8px; color: var(--muted); }
+    .pick-btn .sub { display: block; margin-top: 10px; font-size: .82rem; font-weight: 400; color: var(--faint); }
+
+    .pick-btn.dragging {
+      background: rgba(61, 220, 132, .06);
+      border-color: var(--live);
+    }
+
+    /* ── 列表操作（次按钮）─────────────────────────────────── */
+    .list-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .change-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      font: inherit;
+      font-size: .84rem;
+      font-weight: 500;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .change-btn:hover { color: var(--text); border-color: var(--line-strong); }
+    .change-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+    .change-btn svg { width: 17px; height: 17px; flex: none; }
+
+    /* ── 文件列表 ──────────────────────────────────────────── */
+    .file-list {
+      list-style: none;
+      margin: 0 0 4px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 14px;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: grab;
+      transition: background .25s var(--ease), border-color .25s var(--ease),
+                  opacity .25s var(--ease), transform .25s var(--ease);
+    }
+
+    .file-item:hover { background: rgba(255, 255, 255, .07); border-color: var(--line-strong); }
+    .file-item.dragging { opacity: .35; }
+    .file-item.drag-over { border-color: var(--live); background: rgba(61, 220, 132, .05); }
+
+    .file-item .idx {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--faint);
+      font-size: .74rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .file-item .fname {
+      flex: 1;
+      min-width: 0;
+      font-size: .9rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-item .fmeta {
+      flex: none;
+      color: var(--faint);
+      font-size: .78rem;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .file-item .fstate {
+      flex: none;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: .7rem;
+      color: var(--faint);
+      white-space: nowrap;
+    }
+
+    .file-item .fstate.ok  { color: var(--live);  border-color: rgba(61, 220, 132, .35); }
+    .file-item .fstate.err { color: var(--warn);  border-color: rgba(224, 182, 76, .35); }
+
+    .file-item .fops { display: flex; gap: 6px; flex: none; }
+
+    .file-item .fops button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 30px;
+      padding: 0 9px;
+      font: inherit;
+      font-size: .78rem;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: color .25s var(--ease), border-color .25s var(--ease);
+    }
+
+    .file-item .fops button:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
+    .file-item .fops button:disabled { opacity: .3; cursor: default; }
+    .file-item .fops button.rm:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+    .file-item .fops button svg { width: 15px; height: 15px; }
+
+    .hint { margin-top: 12px; color: var(--faint); font-size: .82rem; line-height: 1.6; }
+
+    /* ── 合并按钮 ──────────────────────────────────────────── */
+    .run-btn {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 13px 20px;
+      font: inherit;
+      font-size: .98rem;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--fill);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .run-btn:hover { background: rgba(255, 255, 255, .09); }
+    .run-btn:disabled { opacity: .5; cursor: wait; }
+
+    .progress-row { margin-top: 14px; }
+
+    .progress {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+
+    .progress .fill {
+      height: 100%;
+      width: 0%;
+      background: var(--live);
+      border-radius: 999px;
+      transition: width .18s linear;
+    }
+
+    .progress-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      font-size: .82rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── 结果区 ────────────────────────────────────────────── */
+    .result-info {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 18px;
+      margin: 4px 0 14px;
+      color: var(--muted);
+      font-size: .86rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .result-info .big { color: var(--text); font-weight: 600; }
+
+    .result-actions { display: flex; gap: 12px; }
+
+    .save-btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      font: inherit;
+      font-size: .98rem;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--fill);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .save-btn:hover { background: rgba(255, 255, 255, .09); }
+    .save-btn svg { width: 18px; height: 18px; }
+
+    .again-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      font: inherit;
+      font-size: .9rem;
+      font-weight: 500;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .again-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    /* ── 提示条 ────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 34px;
+      transform: translateX(-50%) translateY(20px);
+      padding: 12px 20px;
+      font-size: .86rem;
+      color: var(--text);
+      background: rgba(20, 20, 24, .92);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s var(--ease), transform .3s var(--ease);
+      z-index: 20;
+      max-width: min(520px, 88vw);
+    }
+
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── 页脚 ──────────────────────────────────────────────── */
+    footer {
+      margin-top: 40px;
+      font-size: .78rem;
+      color: var(--faint);
+    }
+
+    /* ── 入场动画 ──────────────────────────────────────────── */
+    .rise {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: rise .8s var(--ease) forwards;
+    }
+    .d1 { animation-delay: .05s; }
+    .d2 { animation-delay: .13s; }
+    .d3 { animation-delay: .20s; }
+
+    @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ── 响应式 ────────────────────────────────────────────── */
+    @media (max-width: 760px) {
+      body { padding: 28px 20px 40px; }
+      .file-item { flex-wrap: wrap; gap: 8px 12px; }
+      .file-item .fname { flex-basis: 100%; order: -1; }
+      .file-item .fops { margin-left: auto; }
+      .result-actions { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001s !important;
+      }
+      .rise { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar rise">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>沫友乾</span>
+        <span class="slash">/</span>
+        <span class="mark-sub">PDF 合并</span>
+      </div>
+      <nav class="nav-links">
+        <a href="../../index.html">首页</a>
+        <a class="back-link" href="../index.html">← 返回工具箱</a>
+      </nav>
+    </header>
+
+    <section class="page-head rise d1">
+      <div class="eyebrow">PDF Merge</div>
+      <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3.5h6l4 4v13h-10z"/>
+          <path d="M14 3.5v4h4"/>
+          <path d="M11 12v4.5M11 12H15.5M11 14.5H14"/>
+          <path d="M12.5 12v4.5"/>
+          <path d="M4 8.5v11h8"/>
+          <path d="M6 11.5H9M6 14h6.5"/>
+        </svg>
+        PDF 合并
+      </h1>
+      <p>把多个 PDF 按顺序合并成一个文件。文件全程留在你的浏览器里，不上传任何数据</p>
+    </section>
+
+    <!-- 第 1 步：选择 PDF -->
+    <section class="card" id="step-select">
+      <div class="step-head">
+        <div class="step-num">1</div>
+        <div class="step-title">选择 PDF</div>
+      </div>
+      <button class="pick-btn" id="pickBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 7.5a2 2 0 0 1 2-2h3.3l1.8 2.2h8.1a2 2 0 0 1 2 2v7.3a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z"/>
+        </svg>
+        点击选择 PDF
+        <span class="sub">可以一次选多个文件，也可以直接把 PDF 拖进这个页面</span>
+      </button>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden>
+    </section>
+
+    <!-- 第 2 步：调整顺序并合并 -->
+    <section class="card hidden" id="step-list">
+      <div class="step-head">
+        <div class="step-num">2</div>
+        <div class="step-title">调整顺序并合并</div>
+      </div>
+
+      <div class="list-actions">
+        <button class="change-btn" id="addMoreBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          继续添加
+        </button>
+        <button class="change-btn danger" id="clearBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16M9 7V4.5h6V7M7 7l1 12.5h8L17 7"/>
+          </svg>
+          清空列表
+        </button>
+      </div>
+
+      <ul class="file-list" id="fileList"></ul>
+      <div class="hint">拖拽条目或使用上下按钮调整合并顺序</div>
+
+      <button class="run-btn" id="mergeBtn" type="button">合并这些 PDF</button>
+
+      <div class="progress-row hidden" id="progressRow">
+        <div class="progress"><div class="fill" id="progressFill"></div></div>
+        <div class="progress-meta">
+          <span id="progressText">正在合并…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第 3 步：完成 -->
+    <section class="card hidden" id="step-result">
+      <div class="step-head">
+        <div class="step-num">3</div>
+        <div class="step-title">完成</div>
+      </div>
+      <div class="result-info">
+        <span class="big" id="resultPages">0</span>&nbsp;页
+        <span>·</span>
+        <span id="resultSize">0 KB</span>
+        <span>·</span>
+        <span id="resultCount">0</span>&nbsp;个文件
+      </div>
+      <div class="result-actions">
+        <button class="save-btn" id="saveBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12M6 11l6 6 6-6"/>
+            <path d="M4 21h16"/>
+          </svg>
+          下载合并后的 PDF
+        </button>
+        <button class="again-btn" id="againBtn" type="button">再来一次</button>
+      </div>
+    </section>
+
+    <footer>纯本地处理 · 文件不会上传到任何服务器</footer>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="./pdf-lib.min.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    if (typeof PDFLib === 'undefined') {
+      document.getElementById('toast').textContent = '本地库加载失败，请检查 pdf-lib.min.js 是否完整';
+      document.getElementById('toast').classList.add('show');
+      return;
+    }
+
+    var PDFDocument = PDFLib.PDFDocument;
+
+    /* ── 元素引用 ─────────────────────────────────────────── */
+    var stepSelect = document.getElementById('step-select');
+    var stepList   = document.getElementById('step-list');
+    var stepResult = document.getElementById('step-result');
+    var pickBtn    = document.getElementById('pickBtn');
+    var fileInput  = document.getElementById('fileInput');
+    var addMoreBtn = document.getElementById('addMoreBtn');
+    var clearBtn   = document.getElementById('clearBtn');
+    var fileListEl = document.getElementById('fileList');
+    var mergeBtn   = document.getElementById('mergeBtn');
+    var progressRow = document.getElementById('progressRow');
+    var progressFill = document.getElementById('progressFill');
+    var progressText = document.getElementById('progressText');
+    var resultPages = document.getElementById('resultPages');
+    var resultSize  = document.getElementById('resultSize');
+    var resultCount = document.getElementById('resultCount');
+    var saveBtn    = document.getElementById('saveBtn');
+    var againBtn   = document.getElementById('againBtn');
+    var toastEl    = document.getElementById('toast');
+
+    var files = [];        // { id, name, size, bytes, pages, ok }
+    var seq = 0;
+    var busy = false;
+    var mergedBytes = null;
+    var mergedPages = 0;
+    var dragFrom = -1;
+    var dragOver = -1;
+
+    /* ── 工具函数 ─────────────────────────────────────────── */
+    function fmtSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    }
+
+    function fmtTs() {
+      var d = new Date();
+      function pad(n) { return n < 10 ? '0' + n : '' + n; }
+      return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+           + '_' + pad(d.getHours()) + pad(d.getMinutes());
+    }
+
+    var toastTimer = null;
+    function toast(msg, ms) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, ms || 2600);
+    }
+
+    function baseName(name) {
+      return String(name || '').replace(/\\/g, '/').split('/').pop();
+    }
+
+    /* ── 读取并登记文件 ───────────────────────────────────── */
+    function addFile(file) {
+      var name = baseName(file.name);
+      if (!/\.pdf$/i.test(name) && (file.type && file.type !== 'application/pdf')) {
+        toast('「' + name + '」不是 PDF 文件，已跳过');
+        return;
+      }
+      var entry = { id: ++seq, name: name, size: file.size, bytes: null, pages: 0, ok: true, encrypted: false, err: '' };
+      files.push(entry);
+      render();
+
+      var reader = new FileReader();
+      reader.onload = function () {
+        var arr = new Uint8Array(reader.result);
+        entry.bytes = arr;
+        // 读取页数；同时检测是否加密（加密文档无法合并，提前标记出来）
+        PDFDocument.load(arr, { ignoreEncryption: true, updateMetadata: false })
+          .then(function (doc) {
+            entry.pages = doc.getPageCount();
+            entry.encrypted = !!doc.isEncrypted;
+            entry.ok = true;
+            render();
+          })
+          .catch(function (e) {
+            entry.pages = 0;
+            entry.ok = false;
+            entry.err = (e && e.message) || '';
+            render();
+          });
+      };
+      reader.onerror = function () {
+        entry.ok = false;
+        render();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function addFiles(list) {
+      for (var i = 0; i < list.length; i++) addFile(list[i]);
+    }
+
+    function removeFile(id) {
+      files = files.filter(function (f) { return f.id !== id; });
+      render();
+    }
+
+    function clearFiles() {
+      if (busy) return;
+      files = [];
+      render();
+    }
+
+    /* ── 排序 ─────────────────────────────────────────────── */
+    function move(i, dir) {
+      var j = i + dir;
+      if (j < 0 || j >= files.length) return;
+      var tmp = files[i]; files[i] = files[j]; files[j] = tmp;
+      render();
+    }
+
+    /* ── 渲染 ─────────────────────────────────────────────── */
+    function render() {
+      stepSelect.classList.toggle('hidden', files.length > 0);
+      stepList.classList.toggle('hidden', files.length === 0);
+      stepResult.classList.add('hidden');
+      mergedBytes = null;
+
+      fileListEl.textContent = '';
+      files.forEach(function (f, i) {
+        var li = document.createElement('li');
+        li.className = 'file-item';
+        li.draggable = true;
+        li.dataset.idx = i;
+
+        var idx = document.createElement('span');
+        idx.className = 'idx';
+        idx.textContent = i + 1;
+
+        var name = document.createElement('span');
+        name.className = 'fname';
+        name.textContent = f.name;
+        name.title = f.name;
+
+        var meta = document.createElement('span');
+        meta.className = 'fmeta';
+        meta.textContent = f.pages ? fmtSize(f.size) + ' · ' + f.pages + ' 页' : fmtSize(f.size);
+
+        var state = document.createElement('span');
+        state.className = 'fstate ' + (f.ok && !f.encrypted ? 'ok' : 'err');
+        if (f.encrypted) {
+          state.textContent = '受密码保护';
+          state.title = '该 PDF 设有打开密码，无法合并';
+        } else if (f.ok && f.pages) {
+          state.textContent = '可合并';
+        } else if (f.ok) {
+          state.textContent = '读取中…';
+        } else {
+          state.textContent = '无法读取';
+          state.title = f.err || '文件损坏或格式异常';
+        }
+
+        var ops = document.createElement('div');
+        ops.className = 'fops';
+
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.title = '上移';
+        up.disabled = (i === 0);
+        up.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+        up.addEventListener('click', function () { move(i, -1); });
+
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.title = '下移';
+        down.disabled = (i === files.length - 1);
+        down.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M18 13l-6 6-6-6"/></svg>';
+        down.addEventListener('click', function () { move(i, 1); });
+
+        var rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'rm';
+        rm.title = '移除';
+        rm.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4.5h6V7M7 7l1 12.5h8L17 7"/></svg>';
+        rm.addEventListener('click', function () { removeFile(f.id); });
+
+        ops.appendChild(up);
+        ops.appendChild(down);
+        ops.appendChild(rm);
+
+        li.appendChild(idx);
+        li.appendChild(name);
+        li.appendChild(meta);
+        li.appendChild(state);
+        li.appendChild(ops);
+
+        // 拖拽排序
+        li.addEventListener('dragstart', function (e) {
+          dragFrom = i;
+          li.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', String(i));
+        });
+        li.addEventListener('dragend', function () {
+          li.classList.remove('dragging');
+          fileListEl.querySelectorAll('.drag-over').forEach(function (el) {
+            el.classList.remove('drag-over');
+          });
+          dragFrom = -1; dragOver = -1;
+        });
+        li.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragOver !== i) {
+            fileListEl.querySelectorAll('.drag-over').forEach(function (el) {
+              el.classList.remove('drag-over');
+            });
+            dragOver = i;
+            li.classList.add('drag-over');
+          }
+        });
+        li.addEventListener('drop', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (dragFrom >= 0 && dragFrom !== i) {
+            var moved = files.splice(dragFrom, 1)[0];
+            files.splice(i, 0, moved);
+            render();
+          }
+        });
+
+        fileListEl.appendChild(li);
+      });
+
+      var canMerge = files.length > 0 && files.every(function (f) { return f.ok && !f.encrypted && f.pages > 0; });
+      mergeBtn.disabled = !canMerge || busy;
+    }
+
+    /* ── 合并 ─────────────────────────────────────────────── */
+    function merge() {
+      if (busy) return;
+      var bad = files.filter(function (f) { return !f.ok || f.encrypted || f.pages === 0; });
+      if (bad.length) {
+        var reason = bad[0].encrypted ? '受密码保护，请移除后再试' : '无法读取或文件损坏';
+        toast('「' + bad[0].name + '」' + reason);
+        return;
+      }
+
+      busy = true;
+      mergeBtn.disabled = true;
+      progressRow.classList.remove('hidden');
+      progressFill.style.width = '0%';
+      progressText.textContent = '正在合并…';
+
+      var out = null;
+      var totalPages = 0;
+
+      function step(i) {
+        if (i >= files.length) return finish();
+        var f = files[i];
+        progressText.textContent = '正在处理 ' + (i + 1) + '/' + files.length + ' · ' + f.name;
+
+        PDFDocument.load(f.bytes, { ignoreEncryption: true, updateMetadata: false })
+          .then(function (doc) {
+            var indices = doc.getPageIndices();
+            return out.copyPages(doc, indices).then(function (pages) {
+              pages.forEach(function (p) { out.addPage(p); });
+              totalPages += pages.length;
+              progressFill.style.width = Math.round((i + 1) / files.length * 100) + '%';
+              progressText.textContent = '已合并 ' + totalPages + ' 页 · ' + (i + 1) + '/' + files.length;
+              step(i + 1);
+            });
+          })
+          .catch(function (err) {
+            busy = false;
+            mergeBtn.disabled = false;
+            progressRow.classList.add('hidden');
+            var msg = (err && err.message) ? String(err.message) : '未知错误';
+            // 输出到控制台，便于定位具体原因
+            console.error('[pdf-merge] 合并失败:', f.name, err);
+            toast('「' + f.name + '」合并失败：' + msg + '（详细原因见浏览器控制台）', 6000);
+          });
+      }
+
+      function finish() {
+        out.save().then(function (bytes) {
+          mergedBytes = bytes;
+          mergedPages = totalPages;
+          busy = false;
+          progressRow.classList.add('hidden');
+          showResult();
+        }).catch(function () {
+          busy = false;
+          mergeBtn.disabled = false;
+          progressRow.classList.add('hidden');
+          toast('生成合并文件失败，请重试');
+        });
+      }
+
+      // PDFDocument.create() 是异步方法，返回 Promise，需要先取到实例再开始合并
+      PDFDocument.create().then(function (doc) {
+        out = doc;
+        step(0);
+      });
+    }
+
+    function showResult() {
+      stepSelect.classList.add('hidden');
+      stepList.classList.add('hidden');
+      stepResult.classList.remove('hidden');
+      resultPages.textContent = mergedPages;
+      resultSize.textContent = fmtSize(mergedBytes.length);
+      resultCount.textContent = files.length;
+      stepResult.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    /* ── 下载 ─────────────────────────────────────────────── */
+    function download() {
+      if (!mergedBytes) return;
+      var blob = new Blob([mergedBytes], { type: 'application/pdf' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '合并_' + fmtTs() + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      toast('已开始下载');
+    }
+
+    /* ── 事件绑定 ─────────────────────────────────────────── */
+    pickBtn.addEventListener('click', function () { fileInput.click(); });
+    addMoreBtn.addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files && fileInput.files.length) {
+        addFiles(fileInput.files);
+        fileInput.value = '';
+      }
+    });
+    clearBtn.addEventListener('click', clearFiles);
+    mergeBtn.addEventListener('click', merge);
+    saveBtn.addEventListener('click', download);
+    againBtn.addEventListener('click', function () {
+      files = [];
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // 页面级拖放：把 PDF 拖到窗口任意位置即可添加
+    ['dragenter', 'dragover'].forEach(function (type) {
+      window.addEventListener(type, function (e) {
+        e.preventDefault();
+        if (!busy) pickBtn.classList.add('dragging');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+      window.addEventListener(type, function (e) {
+        e.preventDefault();
+        pickBtn.classList.remove('dragging');
+      });
+    });
+    window.addEventListener('drop', function (e) {
+      e.preventDefault();
+      if (busy) return;
+      var list = [];
+      for (var i = 0; i < e.dataTransfer.files.length; i++) {
+        list.push(e.dataTransfer.files[i]);
+      }
+      if (list.length) addFiles(list);
+    });
+  })();
+  </script>
+</body>
+</html>

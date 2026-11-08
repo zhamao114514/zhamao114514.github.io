@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>全屏文字展示器 - 工具箱</title>
+  <style>
+    /* ── 设计令牌（与首页 / 工具箱同一套）────────────────── */
+    :root {
+      --bg:#08080a; --surface:rgba(255,255,255,.022); --surface-hover:rgba(255,255,255,.045);
+      --fill:rgba(255,255,255,.05); --line:rgba(255,255,255,.075); --line-strong:rgba(255,255,255,.17);
+      --text:#f0f0f2; --muted:#8a8a93; --faint:#5a5a63; --live:#3ddc84;
+      --ease:cubic-bezier(.22,.8,.24,1);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; min-height: 100vh;
+      padding: 30px 28px 52px;
+      color: var(--text); background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                   "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px; line-height: 1.6; letter-spacing: .01em;
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    }
+    /* 顶部冷灰光晕：制造纵深，不做花哨渐变 */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(60rem 32rem at 50% -12%, rgba(150,165,200,.10), transparent 62%),
+        radial-gradient(38rem 22rem at 88% 4%,  rgba(120,140,190,.05), transparent 60%);
+    }
+    /* 2.8% 噪点：避免大面积纯黑显得平板 */
+    body::after {
+      content: ""; position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    ::selection { background: rgba(255,255,255,.16); }
+    a { color: inherit; text-decoration: none; }
+    :focus-visible { outline: 1px solid var(--line-strong); outline-offset: 3px; border-radius: 10px; }
+
+    .wrap { position: relative; z-index: 1; width: min(1200px, 100%); margin: 0 auto; }
+
+    /* ── 顶栏（与工具箱一致）──────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      padding-bottom: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--line);
+      animation: rise .7s var(--ease) both;
+    }
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-size: .95rem; font-weight: 600; letter-spacing: .06em;
+    }
+    .brand .mark {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--live);
+      box-shadow: 0 0 0 4px rgba(61,220,132,.10);
+      animation: breathe 3.2s var(--ease) infinite;
+    }
+    @keyframes breathe { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .brand .slash { color: var(--faint); font-weight: 400; }
+    .brand .mark-sub { color: var(--muted); font-weight: 400; }
+    .nav-links { display: flex; gap: 26px; }
+    .nav-links a {
+      position: relative; font-size: .88rem; color: var(--muted);
+      transition: color .25s var(--ease);
+    }
+    .nav-links a::after {
+      content: ""; position: absolute; left: 0; bottom: -4px; width: 100%; height: 1px;
+      background: currentColor; transform: scaleX(0); transform-origin: left;
+      transition: transform .3s var(--ease);
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+
+    /* ── 整体布局：左控制面板 / 右展示舞台 ─────────────────── */
+    .editor-grid {
+      display: grid; grid-template-columns: 400px minmax(0, 1fr);
+      gap: 20px; align-items: start;
+    }
+    .panel { display: flex; flex-direction: column; gap: 14px; transition: opacity .2s var(--ease); }
+    body.panel-hidden .panel { display: none; }
+
+    .show-panel-btn {
+      display: none; position: fixed; top: 16px; left: 16px; z-index: 500;
+      background: var(--surface-hover); color: var(--text);
+      border: 1px solid var(--line-strong); border-radius: 12px;
+      padding: 10px 16px; font: inherit; font-size: .88rem; cursor: pointer;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 12px 34px -12px rgba(0,0,0,.9);
+      transition: background .25s var(--ease), border-color .25s var(--ease);
+    }
+    .show-panel-btn:hover { background: rgba(255,255,255,.09); }
+    body.panel-hidden .show-panel-btn { display: block; }
+
+    /* ── 卡片 / 可折叠面板 ─────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: 18px; padding: 22px 24px;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+    .card:hover { border-color: var(--line-strong); }
+    .card h3 {
+      margin: 0 0 14px; font-size: .72rem; font-weight: 500;
+      letter-spacing: .18em; text-transform: uppercase; color: var(--faint);
+    }
+    .collapsible .collapse-header {
+      cursor: pointer; user-select: none; margin-bottom: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: color .25s var(--ease);
+    }
+    .collapsible .collapse-header:hover { color: var(--muted); }
+    .collapsible .collapse-arrow {
+      font-size: .72rem; color: var(--faint); transition: transform .25s var(--ease);
+      display: inline-block;
+    }
+    .collapsible:not(.collapsed) .collapse-arrow { transform: rotate(180deg); }
+    .collapsible .collapse-body { overflow: hidden; max-height: 0; transition: max-height .3s var(--ease); }
+    .collapsible:not(.collapsed) .collapse-header { margin-bottom: 14px; }
+    .collapsible:not(.collapsed) .collapse-body { max-height: 3000px; }
+
+    /* ── 表单元素 ──────────────────────────────────────────── */
+    textarea, select, input[type="text"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--line);
+      border-radius: 12px; color: var(--text); font: inherit; font-size: .9rem;
+      outline: none; padding: 12px 14px;
+      transition: border-color .25s var(--ease), background .25s var(--ease);
+    }
+    textarea { resize: vertical; min-height: 112px; line-height: 1.5; }
+    textarea::placeholder, input[type="text"]::placeholder { color: var(--faint); }
+    textarea:focus, select:focus, input[type="text"]:focus {
+      border-color: var(--line-strong); background: var(--surface-hover);
+    }
+    select { padding: 10px 14px; cursor: pointer; color-scheme: dark; }
+    select option { background: #121216; color: var(--text); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .row:last-child { margin-bottom: 0; }
+    .row .lbl { font-size: .85rem; color: var(--text); flex-shrink: 0; }
+    .row .val {
+      font-size: .8rem; color: var(--muted); min-width: 54px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── 滑块：暗色细轨道 + 白色圆点 ───────────────────────── */
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none;
+      flex: 1; height: 20px; background: transparent; cursor: pointer; outline: none;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 3px; border-radius: 999px; background: rgba(255,255,255,.14);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px; margin-top: -5.5px; border-radius: 50%;
+      background: #fff; border: none; box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+      transition: transform .2s var(--ease);
+    }
+    input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.12); }
+    input[type="range"]::-moz-range-track {
+      height: 3px; border-radius: 999px; background: rgba(255,255,255,.14);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 13px; height: 13px; border: none; border-radius: 50%; background: #fff;
+    }
+    input[type="range"]:disabled { opacity: .35; cursor: not-allowed; }
+
+    /* ── 取色器 / 十六进制输入 ─────────────────────────────── */
+    input[type="color"] {
+      -webkit-appearance: none; appearance: none;
+      width: 36px; height: 36px; flex: none; padding: 3px;
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: 10px; cursor: pointer;
+      transition: border-color .25s var(--ease), background .25s var(--ease);
+    }
+    input[type="color"]:hover { border-color: var(--line-strong); }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: none; border-radius: 7px; }
+    input[type="color"]::-moz-color-swatch { border: none; border-radius: 7px; }
+    .hex-input {
+      width: 100px !important; padding: 8px 10px !important; font-size: .82rem !important;
+      font-variant-numeric: tabular-nums;
+    }
+    .swatches { display: flex; gap: 6px; }
+    .sw {
+      width: 22px; height: 22px; border-radius: 8px; border: 1px solid var(--line);
+      cursor: pointer; padding: 0;
+      transition: transform .2s var(--ease), border-color .2s var(--ease);
+    }
+    .sw:hover { transform: translateY(-1px); border-color: var(--line-strong); }
+
+    /* ── 分段选择器 ───────────────────────────────────────── */
+    .seg {
+      display: flex; gap: 4px; background: var(--surface);
+      border: 1px solid var(--line); border-radius: 12px; padding: 4px; margin-bottom: 12px;
+    }
+    .seg:last-child { margin-bottom: 0; }
+    .seg button {
+      flex: 1; border: 1px solid transparent; background: transparent; color: var(--muted);
+      padding: 8px 4px; border-radius: 9px; font: inherit; font-size: .82rem; cursor: pointer;
+      white-space: nowrap;
+      transition: color .25s var(--ease), background .25s var(--ease), border-color .25s var(--ease);
+    }
+    .seg button:hover { color: var(--text); }
+    .seg button.active {
+      background: var(--fill); border-color: var(--line-strong); color: var(--text);
+    }
+
+    /* ── 开关（暗色下清晰可辨）────────────────────────────── */
+    .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: rgba(255,255,255,.10); border: 1px solid var(--line);
+      border-radius: 999px; transition: background .25s var(--ease), border-color .25s var(--ease);
+    }
+    .slider:before {
+      content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px;
+      background: #fff; border-radius: 50%;
+      transition: transform .25s var(--ease);
+    }
+    .switch input:checked + .slider { background: var(--live); border-color: var(--live); }
+    .switch input:checked + .slider:before { transform: translateX(18px); }
+    .switch input:focus-visible + .slider { outline: 1px solid var(--line-strong); outline-offset: 3px; }
+
+    /* ── 按钮 ─────────────────────────────────────────────── */
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 12px 16px; border-radius: 12px; font: inherit; font-size: .88rem;
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--fill); border: 1px solid var(--line-strong); color: var(--text);
+      font-weight: 500;
+      transition: background .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease);
+    }
+    .btn-primary:hover { background: rgba(255,255,255,.09); }
+    .btn-primary:active { background: var(--surface-hover); }
+    .btn-secondary {
+      background: transparent; border: 1px solid var(--line); color: var(--muted);
+      transition: color .25s var(--ease), border-color .25s var(--ease), background .25s var(--ease);
+    }
+    .btn-secondary:hover { color: var(--text); border-color: var(--line-strong); }
+    .btn-secondary:active { background: var(--fill); }
+    .btn-block { grid-column: 1 / -1; }
+
+    .hint { font-size: .76rem; color: var(--faint); line-height: 1.6; margin-top: 10px; }
+    kbd {
+      display: inline-block; background: var(--fill); border: 1px solid var(--line);
+      border-radius: 7px; padding: 2px 7px; font-size: .74rem; color: var(--muted);
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    }
+    .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: .8rem; align-items: center; }
+    .keys .desc { color: var(--muted); }
+
+    /* ── 右侧展示区外壳 ───────────────────────────────────── */
+    /* 注：.stage / .copy / .track 的背景、内边距、字号全部由 JS 通过
+       --stage-bg / --fs 等自定义属性与内联样式写入，样式表里不做任何覆盖。 */
+    .preview-col { position: sticky; top: 20px; }
+    .screen-root {
+      position: relative; height: clamp(440px, 58vh, 720px);
+      border-radius: 18px; overflow: hidden; border: 1px solid var(--line);
+      background: #000; display: flex; flex-direction: column;
+      box-shadow: 0 24px 60px -28px rgba(0,0,0,.95);
+    }
+    .stage {
+      position: relative; flex: 1; overflow: hidden; min-height: 0;
+      background: var(--stage-bg, #000);
+      font-family: var(--ff, sans-serif);
+    }
+    /* 透明背景棋盘格（--stage-bg 被 JS 置为 transparent 时露出来）*/
+    .stage.is-transparent {
+      background-color: #131316;
+      background-image:
+        linear-gradient(45deg, #1c1c21 25%, transparent 25%, transparent 75%, #1c1c21 75%),
+        linear-gradient(45deg, #1c1c21 25%, #131316 25%, #131316 75%, #1c1c21 75%);
+      background-size: 22px 22px; background-position: 0 0, 11px 11px;
+    }
+    .stage-pad { position: absolute; inset: 0; padding: clamp(10px, 3vmin, 34px); }
+    .track { position: relative; }
+    .copy {
+      color: var(--tc, #fff); font-size: var(--fs, 48px); font-weight: var(--fw, 700);
+      line-height: var(--lh, 1.5); letter-spacing: var(--ls, 0);
+      text-shadow: var(--ts, none); overflow-wrap: break-word;
+    }
+    .h-line { white-space: nowrap; }
+
+    /* 静态模式布局 */
+    .mode-static .stage-pad { display: flex; flex-direction: column; }
+    .mode-static.valign-top .stage-pad { justify-content: flex-start; }
+    .mode-static.valign-center .stage-pad { justify-content: center; }
+    .mode-static.valign-bottom .stage-pad { justify-content: flex-end; }
+    .mode-static .track { width: 100%; }
+    .mode-static .copy { width: 100%; white-space: pre-wrap; }
+    .mode-static.halign-left .copy { text-align: left; }
+    .mode-static.halign-center .copy { text-align: center; }
+    .mode-static.halign-right .copy { text-align: right; }
+    .mode-static #copy-b { display: none; }
+    /* 水平滚动模式（轨道位置由 JS 按安全边距计算） */
+    .mode-h .track { position: absolute; }
+    .mode-h .copy { position: absolute; top: 0; white-space: nowrap; }
+    /* 垂直滚动模式 */
+    .mode-v .track { position: absolute; }
+    .mode-v .copy { position: absolute; left: 0; width: 100%; white-space: pre-wrap; }
+
+    .stage-hint {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--faint); font-size: 14px; letter-spacing: .08em; pointer-events: none;
+    }
+    .stage-hint.hidden { display: none; }
+
+    .preview-foot {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 2px 0; font-size: .78rem; color: var(--faint); gap: 10px;
+    }
+
+    /* ── 展示层内的浮动控制条（全屏时用）──────────────────── */
+    .float-bar {
+      position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom));
+      transform: translateX(-50%) translateY(10px);
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(12,12,14,.72); border: 1px solid var(--line-strong);
+      backdrop-filter: blur(14px); border-radius: 999px; padding: 7px 10px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .25s var(--ease), transform .25s var(--ease); z-index: 20;
+    }
+    .float-bar.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+    .float-bar.force-hidden { display: none !important; }
+    .f-btn {
+      min-width: 38px; height: 38px; border: 1px solid var(--line);
+      border-radius: 999px; background: var(--fill); color: var(--text);
+      font: inherit; font-size: .86rem; cursor: pointer; padding: 0 9px;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease);
+    }
+    .f-btn:hover { background: rgba(255,255,255,.09); border-color: var(--line-strong); }
+    .f-btn.wide {
+      min-width: 56px; font-size: .78rem; font-variant-numeric: tabular-nums;
+      cursor: default; color: var(--muted); background: transparent;
+    }
+    .f-btn.wide:hover { background: transparent; border-color: var(--line); }
+    .fs-tip {
+      position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 50%;
+      transform: translateX(-50%); font-size: .74rem; color: var(--muted);
+      background: rgba(12,12,14,.72); border: 1px solid var(--line);
+      padding: 5px 12px; border-radius: 999px; z-index: 20;
+      opacity: 0; transition: opacity .3s var(--ease); pointer-events: none; white-space: nowrap;
+    }
+    .screen-root.is-full .fs-tip.show { opacity: 1; }
+
+    /* 真正全屏 / iPhone 伪全屏兜底 */
+    .screen-root.is-full { border-radius: 0; border: none; height: 100vh; height: 100dvh; width: 100%; }
+    .screen-root.pseudo-fs {
+      position: fixed; inset: 0; z-index: 99999; width: 100vw; height: 100vh; height: 100dvh;
+      border-radius: 0; border: none;
+    }
+
+    body.fs-lock { overflow: hidden; }
+
+    /* ── Toast ────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: rgba(18,18,22,.94); border: 1px solid var(--line-strong); color: var(--text);
+      padding: 10px 20px; border-radius: 12px; font-size: .86rem; z-index: 9999;
+      opacity: 0; pointer-events: none; backdrop-filter: blur(14px);
+      transition: opacity .3s var(--ease), transform .3s var(--ease);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── 响应式 ───────────────────────────────────────────── */
+    @media (max-width: 960px) {
+      body { padding: 22px 18px 40px; }
+      .editor-grid { grid-template-columns: 1fr; }
+      .preview-col { position: static; order: -1; }
+      .screen-root { height: 46vh; min-height: 260px; }
+      /* 手机端：输入框 16px 防止 iOS 聚焦自动缩放，按钮命中区加大 */
+      textarea, select, input[type="text"] { font-size: 16px; }
+      .seg button { padding: 10px 4px; }
+      .sw { width: 26px; height: 26px; }
+      .hint, .keys { font-size: 0.82rem; }
+    }
+    @media (max-width: 860px) {
+      body { padding: 20px 16px 36px; }
+      .nav-links { gap: 18px; }
+      .card { padding: 20px 18px; border-radius: 16px; }
+      .editor-grid { gap: 16px; }
+      .row .lbl { font-size: .82rem; }
+    }
+    @media (max-width: 480px) {
+      .topbar { gap: 12px; }
+      .brand { font-size: .9rem; }
+      .nav-links a { font-size: .82rem; }
+      .hex-input { width: 86px !important; }
+    }
+
+    /* 只温和关闭 UI 过渡/入场动画；滚动展示由 rAF 驱动，不受此处影响 */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .001s !important; }
+      .topbar { animation: none; }
+      .brand .mark { animation: none; opacity: .85; }
+    }</style>
+</head>
+<body>
+  <button class="show-panel-btn" id="show-panel-btn" type="button">显示控制面板</button>
+
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>沫友乾</span>
+        <span class="slash">/</span>
+        <span class="mark-sub">全屏文字展示器</span>
+      </div>
+      <nav class="nav-links">
+        <a href="../../index.html">首页</a>
+        <a href="../index.html">返回工具箱</a>
+      </nav>
+    </header>
+
+    <div class="editor-grid">
+      <!-- ========== 左侧：控制面板 ========== -->
+      <aside class="panel" id="panel">
+
+        <section class="card">
+          <h3>文字内容</h3>
+          <textarea id="i-text" placeholder="在此输入或粘贴要展示的文字，支持换行、中英文、标点与 emoji…"></textarea>
+          <div class="row" style="margin-top:10px">
+            <span class="val" id="char-count" style="text-align:left">0 字</span>
+            <button class="btn btn-secondary" id="btn-clear" type="button" style="padding:9px 16px;font-size:.82rem"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></svg>清空</button>
+          </div>
+          <div class="hint">内容会自动保存在本机浏览器，下次打开自动恢复。</div>
+        </section>
+
+        <section class="card">
+          <h3>播放控制</h3>
+          <div class="btn-grid">
+            <button class="btn btn-primary btn-block" id="btn-play" type="button"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M7.5 4.8 19 12 7.5 19.2z"/></svg>开始</button>
+            <button class="btn btn-secondary" id="btn-stop" type="button"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>停止</button>
+            <button class="btn btn-secondary" id="btn-reset" type="button"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M4 10a8 8 0 1 1 6 7.7M4 5.5V10h4.5"/></svg>重置</button>
+            <button class="btn btn-secondary" id="btn-full" type="button"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>全屏</button>
+            <button class="btn btn-secondary" id="btn-hide-panel" type="button">隐藏面板</button>
+          </div>
+          <div class="row">
+            <span class="lbl">保持屏幕常亮（实验性，不一定生效）</span>
+            <label class="switch"><input type="checkbox" id="i-keep" checked><span class="slider"></span></label>
+          </div>
+          <div class="hint">常亮功能需浏览器支持（Chrome / Edge / Safari 16.4+），且通过 HTTPS 或本地文件打开。</div>
+        </section>
+
+        <section class="card">
+          <h3>显示模式</h3>
+          <div class="seg" data-seg="mode">
+            <button type="button" data-v="static">静态显示</button>
+            <button type="button" data-v="h">水平滚动</button>
+            <button type="button" data-v="v">垂直滚动</button>
+          </div>
+
+          <div id="box-static">
+            <div class="row"><span class="lbl">纵向位置</span></div>
+            <div class="seg" data-seg="valign">
+              <button type="button" data-v="top">顶部</button>
+              <button type="button" data-v="center">居中</button>
+              <button type="button" data-v="bottom">底部</button>
+            </div>
+            <div class="row"><span class="lbl">横向对齐</span></div>
+            <div class="seg" data-seg="halign">
+              <button type="button" data-v="left">左对齐</button>
+              <button type="button" data-v="center">居中</button>
+              <button type="button" data-v="right">右对齐</button>
+            </div>
+          </div>
+
+          <div id="box-h" style="display:none">
+            <div class="row"><span class="lbl">滚动方向</span></div>
+            <div class="seg" data-seg="hdir">
+              <button type="button" data-v="rtl">从右到左</button>
+              <button type="button" data-v="ltr">从左到右</button>
+            </div>
+          </div>
+
+          <div id="box-v" style="display:none">
+            <div class="row"><span class="lbl">滚动方向</span></div>
+            <div class="seg" data-seg="vdir">
+              <button type="button" data-v="btt">从下到上</button>
+              <button type="button" data-v="ttb">从上到下</button>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <span class="lbl">循环播放（关闭则只播放一次）</span>
+            <label class="switch"><input type="checkbox" id="i-loop"><span class="slider"></span></label>
+          </div>
+          <div class="row">
+            <span class="lbl">滚动速度</span>
+            <input type="range" id="i-speed" min="20" max="800" step="10" value="160">
+            <span class="val" id="i-speed-val">160 px/s</span>
+          </div>
+          <div class="row" style="margin-top:10px; justify-content:flex-end">
+            <button class="btn btn-secondary" type="button" data-reset="mode" style="padding:6px 16px;font-size:.82rem">恢复默认</button>
+          </div>
+        </section>
+
+        <section class="card collapsible collapsed">
+          <h3 class="collapse-header">文字样式 <span class="collapse-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></span></h3>
+          <div class="collapse-body">
+          <div class="row">
+            <span class="lbl">字体</span>
+            <select id="i-font" style="flex:1">
+              <option value="sans">默认无衬线</option>
+              <option value="hei">黑体</option>
+              <option value="song">宋体</option>
+              <option value="kai">楷体</option>
+              <option value="round">圆体</option>
+              <option value="mono">等宽字体</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="lbl">字号</span>
+            <input type="range" id="i-fsize" min="16" max="400" step="2" value="96">
+            <span class="val" id="i-fsize-val">96px</span>
+          </div>
+          <div class="row">
+            <span class="lbl">字重</span>
+            <select id="i-fweight" style="flex:1">
+              <option value="300">细体 300</option>
+              <option value="400">常规 400</option>
+              <option value="500">中等 500</option>
+              <option value="700" selected>粗体 700</option>
+              <option value="900">特粗 900</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="lbl">文字颜色</span>
+            <input type="color" id="i-color" value="#ffffff">
+            <input type="text" class="hex-input" id="i-color-hex" value="#ffffff">
+            <span class="swatches">
+              <button class="sw" type="button" data-swatch="color" data-c="#ffffff" style="background:#fff"></button>
+              <button class="sw" type="button" data-swatch="color" data-c="#ffd166" style="background:#ffd166"></button>
+              <button class="sw" type="button" data-swatch="color" data-c="#ef476f" style="background:#ef476f"></button>
+              <button class="sw" type="button" data-swatch="color" data-c="#06d6a0" style="background:#06d6a0"></button>
+              <button class="sw" type="button" data-swatch="color" data-c="#4f9cff" style="background:#4f9cff"></button>
+            </span>
+          </div>
+          <div class="row">
+            <span class="lbl">行距</span>
+            <input type="range" id="i-lh" min="1" max="3" step="0.05" value="1.5">
+            <span class="val" id="i-lh-val">1.50</span>
+          </div>
+          <div class="row">
+            <span class="lbl">字距</span>
+            <input type="range" id="i-ls" min="-5" max="60" step="1" value="0">
+            <span class="val" id="i-ls-val">0px</span>
+          </div>
+          <div class="row">
+            <span class="lbl">静态时自动铺满屏幕（覆盖字号）</span>
+            <label class="switch"><input type="checkbox" id="i-autofit"><span class="slider"></span></label>
+          </div>
+          <div class="row" style="margin-top:10px; justify-content:flex-end">
+            <button class="btn btn-secondary" type="button" data-reset="font" style="padding:6px 16px;font-size:.82rem">恢复默认</button>
+          </div>
+          </div>
+        </section>
+
+        <section class="card collapsible collapsed">
+          <h3 class="collapse-header">背景与效果 <span class="collapse-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></span></h3>
+          <div class="collapse-body">
+          <div class="row">
+            <span class="lbl">背景颜色</span>
+            <input type="color" id="i-bg" value="#000000">
+            <input type="text" class="hex-input" id="i-bg-hex" value="#000000">
+            <span class="swatches">
+              <button class="sw" type="button" data-swatch="bg" data-c="#000000" style="background:#000"></button>
+              <button class="sw" type="button" data-swatch="bg" data-c="#1a1a2e" style="background:#1a1a2e"></button>
+              <button class="sw" type="button" data-swatch="bg" data-c="#0f3460" style="background:#0f3460"></button>
+              <button class="sw" type="button" data-swatch="bg" data-c="#ffffff" style="background:#fff"></button>
+            </span>
+          </div>
+          <div class="row">
+            <span class="lbl">透明背景（显示棋盘格）</span>
+            <label class="switch"><input type="checkbox" id="i-trans"><span class="slider"></span></label>
+          </div>
+          <div class="row">
+            <span class="lbl">文字描边</span>
+            <label class="switch"><input type="checkbox" id="i-stroke"><span class="slider"></span></label>
+          </div>
+          <div class="row" id="row-stroke-w">
+            <span class="lbl">描边宽度</span>
+            <input type="range" id="i-stroke-w" min="0" max="20" step="1" value="3">
+            <span class="val" id="i-stroke-w-val">3px</span>
+          </div>
+          <div class="row" id="row-stroke-c">
+            <span class="lbl">描边颜色</span>
+            <input type="color" id="i-stroke-c" value="#000000">
+          </div>
+          <div class="row">
+            <span class="lbl">文字效果</span>
+            <select id="i-effect" style="flex:1">
+              <option value="none">无</option>
+              <option value="shadow">投影</option>
+              <option value="glow">发光</option>
+            </select>
+          </div>
+          <div class="row" id="row-glow">
+            <span class="lbl">发光强度</span>
+            <input type="range" id="i-glow" min="10" max="200" step="5" value="60">
+            <span class="val" id="i-glow-val">60</span>
+          </div>
+          <div class="row" style="margin-top:10px; justify-content:flex-end">
+            <button class="btn btn-secondary" type="button" data-reset="bg" style="padding:6px 16px;font-size:.82rem">恢复默认</button>
+          </div>
+          </div>
+        </section>
+
+        <section class="card collapsible collapsed">
+          <h3 class="collapse-header">快捷键 <span class="collapse-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></span></h3>
+          <div class="collapse-body">
+          <div class="keys">
+            <kbd>空格</kbd><span class="desc">播放 / 暂停</span>
+            <kbd>F</kbd><span class="desc">进入 / 退出全屏</span>
+            <kbd>Esc</kbd><span class="desc">退出全屏</span>
+            <kbd>H</kbd><span class="desc">隐藏 / 显示控制面板</span>
+            <kbd>↑ ↓</kbd><span class="desc">滚动时调速度，静态时调字号</span>
+            <kbd>← →</kbd><span class="desc">滚动时微调位置，静态时移动文字</span>
+          </div>
+          <div class="hint">在输入框内打字时快捷键不会触发。</div>
+          <div class="row" style="margin-top:10px; justify-content:flex-end">
+            <button class="btn btn-secondary" type="button" data-reset="keys" style="padding:6px 16px;font-size:.82rem">恢复默认</button>
+          </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- ========== 右侧：展示舞台 ========== -->
+      <main class="preview-col">
+        <div class="screen-root" id="screen-root">
+          <div class="stage mode-static valign-center halign-center" id="stage">
+            <div class="stage-pad">
+              <div class="track" id="track">
+                <div class="copy" id="copy-a"></div>
+                <div class="copy" id="copy-b"></div>
+              </div>
+            </div>
+            <div class="stage-hint" id="stage-hint">在左侧输入文字，点击「开始」展示</div>
+            <div class="fs-tip" id="fs-tip">空格 播放/暂停 · F 全屏 · H 隐藏控件 · Esc 退出</div>
+            <div class="float-bar" id="float-bar">
+              <button class="f-btn" id="f-play" type="button">▶</button>
+              <button class="f-btn" id="f-reset" type="button" title="重置">↺</button>
+              <button class="f-btn" id="f-sdown" type="button"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 12h13"/></svg></button>
+              <span class="f-btn wide" id="f-speed-val">160</span>
+              <button class="f-btn" id="f-sup" type="button"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg></button>
+              <button class="f-btn" id="f-hide" type="button" title="隐藏/显示控件（H）">隐</button>
+              <button class="f-btn" id="f-exit" type="button" title="退出全屏（Esc）">退出</button>
+            </div>
+          </div>
+        </div>
+        <div class="preview-foot">
+          <span id="status-text">状态：就绪</span>
+          <span>预览即所得，全屏后按比例自动缩放</span>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  "use strict";
+  /* ================= 常量与状态 ================= */
+  const STORE_KEY = 'fullscreen-text-v1';
+  const EMOJI_STACK = ',"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji"';
+  const FONTS = {
+    sans:  '-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif',
+    hei:   '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Heiti SC",sans-serif',
+    song:  '"Songti SC","SimSun","Noto Serif SC",serif',
+    kai:   '"Kaiti SC","KaiTi","STKaiti","AR PL UKai CN",serif',
+    round: '"Yuanti SC","YouYuan","PingFang SC","Microsoft YaHei",sans-serif',
+    mono:  'ui-monospace,"SF Mono",Consolas,"Courier New",monospace'
+  };
+  const DEFAULTS = {
+    text: '全屏文字展示器', mode: 'static',
+    valign: 'center', halign: 'center', hdir: 'rtl', vdir: 'btt',
+    loop: true, speed: 160,
+    font: 'sans', fontSize: 96, fontWeight: '700',
+    color: '#ffffff', bg: '#000000', transparent: false,
+    lineHeight: 1.5, letterSpacing: 0,
+    strokeOn: false, strokeWidth: 3, strokeColor: '#000000',
+    effect: 'none', glow: 60,
+    autoFit: false, keepAwake: true
+  };
+  let S = Object.assign({}, DEFAULTS);
+
+  // 各板块"恢复默认"对应的字段范围
+  const RESET_MAP = {
+    mode: ['mode', 'valign', 'halign', 'hdir', 'vdir', 'loop', 'speed'],
+    font: ['font', 'fontSize', 'fontWeight', 'color', 'lineHeight', 'letterSpacing', 'autoFit'],
+    bg: ['bg', 'transparent', 'strokeOn', 'strokeWidth', 'strokeColor', 'effect', 'glow'],
+    keys: []
+  };
+  function resetSection(scope) {
+    const keys = RESET_MAP[scope] || [];
+    if (keys.length === 0) { showToast('快捷键不能修改，所以这算不算恢复了呢'); return; }
+    keys.forEach(k => { S[k] = DEFAULTS[k]; });
+    syncControls();
+    updateCondRows();
+    renderAll();
+    updatePlayUI();
+    scheduleSave();
+    showToast('已恢复默认');
+  }
+
+  // 播放状态：idle 就绪 / playing 播放中 / paused 已暂停 / finished 已播完
+  let playState = 'idle';
+  let rafId = null, lastTs = 0, pos = 0, copySize = 0;
+  let nudgeX = 0, nudgeY = 0, scaleUnit = 1;
+  let wakeLock = null, floatTimer = null, toastTimer = null;
+
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), track = $('track'), copyA = $('copy-a'), copyB = $('copy-b');
+  const root = $('screen-root'), floatBar = $('float-bar');
+
+  /* ================= 本地保存 / 恢复 ================= */
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {}
+  }
+  let saveTimer = null;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 250);
+  }
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) S = Object.assign({}, DEFAULTS, JSON.parse(raw));
+    } catch (e) {}
+  }
+
+  /* ================= 控件 ↔ 状态 同步 ================= */
+  // 把 S 写回到所有表单控件
+  function syncControls() {
+    $('i-text').value = S.text;
+    setSeg('mode', S.mode); setSeg('valign', S.valign); setSeg('halign', S.halign);
+    setSeg('hdir', S.hdir); setSeg('vdir', S.vdir);
+    $('i-loop').checked = S.loop;
+    $('i-speed').value = S.speed; $('i-speed-val').textContent = S.speed + ' px/s';
+    $('i-font').value = S.font;
+    $('i-fsize').value = S.fontSize; $('i-fsize-val').textContent = S.fontSize + 'px';
+    $('i-fweight').value = S.fontWeight;
+    $('i-color').value = S.color; $('i-color-hex').value = S.color;
+    $('i-bg').value = S.bg; $('i-bg-hex').value = S.bg;
+    $('i-trans').checked = S.transparent;
+    $('i-lh').value = S.lineHeight; $('i-lh-val').textContent = Number(S.lineHeight).toFixed(2);
+    $('i-ls').value = S.letterSpacing; $('i-ls-val').textContent = S.letterSpacing + 'px';
+    $('i-autofit').checked = S.autoFit;
+    $('i-stroke').checked = S.strokeOn;
+    $('i-stroke-w').value = S.strokeWidth; $('i-stroke-w-val').textContent = S.strokeWidth + 'px';
+    $('i-stroke-c').value = S.strokeColor;
+    $('i-effect').value = S.effect;
+    $('i-glow').value = S.glow; $('i-glow-val').textContent = S.glow;
+    $('i-keep').checked = S.keepAwake;
+    updateModeBoxes();
+  }
+  function setSeg(name, v) {
+    document.querySelectorAll('[data-seg="' + name + '"] button').forEach(b =>
+      b.classList.toggle('active', b.dataset.v === v));
+  }
+
+  // 根据显示模式显示对应的方向/对齐设置块
+  function updateModeBoxes() {
+    $('box-static').style.display = S.mode === 'static' ? '' : 'none';
+    $('box-h').style.display = S.mode === 'h' ? '' : 'none';
+    $('box-v').style.display = S.mode === 'v' ? '' : 'none';
+    $('i-speed').disabled = S.mode === 'static';
+  }
+
+  /* ================= 舞台渲染 ================= */
+  // 把文本渲染进两份拷贝（滚动循环需要两份相同内容）
+  function renderText() {
+    const txt = S.text;
+    $('stage-hint').classList.toggle('hidden', !!(txt && txt.trim()));
+    if (S.mode === 'h') {
+      // 水平滚动：按行拆分，每行不换行
+      const lines = txt.split('\n');
+      [copyA, copyB].forEach(cp => {
+        cp.textContent = '';
+        lines.forEach(line => {
+          const d = document.createElement('div');
+          d.className = 'h-line';
+          d.textContent = line.length ? line : ' ';
+          cp.appendChild(d);
+        });
+      });
+    } else {
+      // 静态 / 垂直滚动：保留换行与空格，自动换行
+      copyA.textContent = txt;
+      copyB.textContent = txt;
+    }
+  }
+
+  // 组合 text-shadow：描边（8 方向）+ 投影/发光
+  function buildTextShadow(u) {
+    const parts = [];
+    if (S.strokeOn) {
+      const w = Math.max(0.5, S.strokeWidth * u);
+      const c = S.strokeColor;
+      for (let a = 0; a < 360; a += 45) {
+        const x = (Math.cos(a * Math.PI / 180) * w).toFixed(1);
+        const y = (Math.sin(a * Math.PI / 180) * w).toFixed(1);
+        parts.push(x + 'px ' + y + 'px 0 ' + c);
+      }
+    }
+    if (S.effect === 'shadow') {
+      parts.push('0 ' + (0.06 * 96 * u).toFixed(1) + 'px ' + (0.14 * 96 * u).toFixed(1) + 'px rgba(0,0,0,.65)');
+    } else if (S.effect === 'glow') {
+      const g = S.glow / 60;
+      parts.push('0 0 ' + (0.12 * 96 * u * g).toFixed(1) + 'px ' + S.color);
+      parts.push('0 0 ' + (0.34 * 96 * u * g).toFixed(1) + 'px ' + S.color);
+    }
+    return parts.length ? parts.join(',') : 'none';
+  }
+
+  // 应用全部样式到舞台（样式随时改随时生效，与播放无关）
+  function applyStyles() {
+    stage.className = 'stage mode-' + S.mode + ' valign-' + S.valign + ' halign-' + S.halign;
+    stage.style.setProperty('--stage-bg', S.transparent ? 'transparent' : S.bg);
+    stage.classList.toggle('is-transparent', S.transparent);
+    stage.style.setProperty('--ff', FONTS[S.font] + EMOJI_STACK);
+    stage.style.setProperty('--fw', S.fontWeight);
+    stage.style.setProperty('--tc', S.color);
+    stage.style.setProperty('--lh', S.lineHeight);
+    stage.style.setProperty('--ls', (S.letterSpacing * scaleUnit).toFixed(2) + 'px');
+    stage.style.setProperty('--ts', buildTextShadow(scaleUnit));
+
+    let fsPx;
+    if (S.mode === 'static' && S.autoFit) {
+      fsPx = fitFontSize();
+    } else {
+      fsPx = S.fontSize * scaleUnit;
+    }
+    stage.style.setProperty('--fs', fsPx.toFixed(1) + 'px');
+
+    if (S.mode === 'static') {
+      copyB.style.display = 'none';
+      copyA.style.transform = 'translate(' + nudgeX + 'px,' + nudgeY + 'px)';
+      // 清掉滚动模式遗留的内联定位，回到静态文档流
+      track.style.left = ''; track.style.top = '';
+      track.style.width = ''; track.style.height = ''; track.style.transform = '';
+      copyA.style.left = ''; copyA.style.top = '';
+      copyB.style.left = ''; copyB.style.top = '';
+    } else {
+      copyB.style.display = '';
+      copyA.style.transform = '';
+    }
+    $('char-count').textContent = S.text.length + ' 字 · ' +
+      (S.text ? S.text.split('\n').length : 0) + ' 行';
+  }
+
+  // 静态模式：二分求最大字号，让文字完整落在舞台内
+  function fitFontSize() {
+    const pad = stage.querySelector('.stage-pad');
+    const maxW = pad.clientWidth, maxH = pad.clientHeight;
+    if (!maxW || !maxH) return S.fontSize * scaleUnit;
+    copyA.style.visibility = 'hidden';
+    let lo = 8 * scaleUnit, hi = Math.max(stage.clientHeight * 1.4, lo + 1);
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2;
+      copyA.style.fontSize = mid + 'px';
+      if (copyA.scrollWidth <= maxW && copyA.scrollHeight <= maxH) lo = mid; else hi = mid;
+    }
+    copyA.style.fontSize = '';
+    copyA.style.visibility = '';
+    return lo;
+  }
+
+  // 全量刷新
+  function renderAll() {
+    renderText();
+    applyStyles(); // 先让字号/字体生效，测量才准确
+    if (S.mode === 'static') {
+      cancelRaf(); resetPosition(); applyStyles();
+    } else {
+      setupScrollLayout();
+      if (playState !== 'playing') resetPosition();
+      applyTransform();
+    }
+  }
+
+  /* ================= 滚动引擎（rAF + 时间差，速度单位 px/秒） ================= */
+  function axis() { return S.mode === 'h' ? 'x' : 'y'; }
+  function dir() {
+    if (S.mode === 'h') return S.hdir === 'rtl' ? -1 : 1;
+    return S.vdir === 'btt' ? -1 : 1;
+  }
+  function stageSize() { return axis() === 'x' ? stage.clientWidth : stage.clientHeight; }
+
+  // 舞台安全区（去掉 padding 后的内容盒），滚动轨道严格放在里面
+  function padBox() {
+    const pad = stage.querySelector('.stage-pad');
+    const cs = getComputedStyle(pad);
+    const pl = parseFloat(cs.paddingLeft) || 0, pt = parseFloat(cs.paddingTop) || 0;
+    const pr = parseFloat(cs.paddingRight) || 0, pb = parseFloat(cs.paddingBottom) || 0;
+    return { pl: pl, pt: pt, w: pad.clientWidth - pl - pr, h: pad.clientHeight - pt - pb };
+  }
+
+  // 测量一份拷贝的宽/高，并按方向摆放第二份拷贝用于无缝循环
+  function setupScrollLayout() {
+    if (S.mode === 'static') return;
+    const d = dir(), ax = axis(), b = padBox();
+    if (ax === 'x') {
+      const w = copyA.scrollWidth, h = copyA.scrollHeight;
+      copySize = w;
+      track.style.left = b.pl + 'px';
+      track.style.top = (b.pt + b.h / 2) + 'px'; // 垂直居中
+      track.style.width = ''; track.style.height = h + 'px';
+      copyA.style.left = '0px'; copyA.style.top = '0px';
+      copyB.style.left = (d > 0 ? -w : w) + 'px'; copyB.style.top = '0px';
+    } else {
+      const h = copyA.scrollHeight;
+      copySize = h;
+      track.style.left = b.pl + 'px';
+      track.style.top = b.pt + 'px';
+      track.style.width = b.w + 'px'; track.style.height = '';
+      copyA.style.left = '0px'; copyA.style.top = '0px';
+      copyB.style.left = '0px'; copyB.style.top = (d > 0 ? -h : h) + 'px';
+    }
+  }
+  function initialPos() { return dir() < 0 ? stageSize() : -copySize; }
+  function resetPosition() {
+    if (S.mode === 'static') { nudgeX = 0; nudgeY = 0; }
+    else pos = initialPos();
+  }
+  function applyTransform() {
+    if (S.mode === 'h') {
+      track.style.transform = 'translateY(-50%) translate3d(' + pos.toFixed(1) + 'px,0,0)';
+    } else if (S.mode === 'v') {
+      track.style.transform = 'translate3d(0,' + pos.toFixed(1) + 'px,0)';
+    }
+  }
+
+  function tick(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = (ts - lastTs) / 1000; lastTs = ts;
+    if (dt > 0.05) dt = 0.05; // 切后台回来不跳变
+    pos += dir() * S.speed * scaleUnit * dt;
+    const ss = stageSize();
+    if (S.loop) {
+      if (dir() < 0 && pos <= -copySize) pos += copySize;
+      if (dir() > 0 && pos >= copySize) pos -= copySize;
+    } else if ((dir() < 0 && pos <= -copySize) || (dir() > 0 && pos >= ss)) {
+      finish(); return;
+    }
+    applyTransform();
+    rafId = requestAnimationFrame(tick);
+  }
+  function cancelRaf() { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } lastTs = 0; }
+
+  /* ================= 播放控制 ================= */
+  function play() {
+    if (S.mode === 'static') {
+      playState = 'playing';
+    } else {
+      if (playState === 'idle' || playState === 'finished') {
+        setupScrollLayout(); resetPosition();
+      }
+      playState = 'playing';
+      cancelRaf();
+      lastTs = 0;
+      rafId = requestAnimationFrame(tick);
+    }
+    acquireWakeLock();
+    updatePlayUI();
+    pokeFloat();
+  }
+  function pause() {
+    cancelRaf(); playState = 'paused';
+    releaseWakeLock(); updatePlayUI(); pokeFloat();
+  }
+  function stopPlay() {
+    cancelRaf(); playState = 'idle';
+    resetPosition(); applyTransform(); applyStyles();
+    releaseWakeLock(); updatePlayUI();
+  }
+  function resetPlay() {
+    // 重置：回到起点；播放中则继续从头播放
+    const wasPlaying = playState === 'playing';
+    cancelRaf();
+    if (S.mode === 'static') { nudgeX = nudgeY = 0; applyStyles(); }
+    else { setupScrollLayout(); pos = initialPos(); applyTransform(); }
+    playState = wasPlaying ? 'playing' : 'idle';
+    if (wasPlaying) { lastTs = 0; rafId = requestAnimationFrame(tick); }
+    updatePlayUI();
+  }
+  function finish() {
+    cancelRaf(); playState = 'finished';
+    resetPosition(); applyTransform();
+    releaseWakeLock(); updatePlayUI();
+    showToast('播放完成');
+  }
+  function togglePlay() {
+    if (playState === 'playing') pause(); else play();
+  }
+  function updatePlayUI() {
+    const label = { idle: '▶ 开始', playing: '❚❚ 暂停', paused: '▶ 继续', finished: '▶ 重新播放' }[playState];
+    $('btn-play').textContent = label;
+    $('f-play').textContent = playState === 'playing' ? '❚❚' : '▶';
+    const st = { idle: '就绪', playing: '播放中', paused: '已暂停', finished: '已播完' }[playState];
+    $('status-text').textContent = '状态：' + st;
+  }
+
+  function changeSpeed(delta) {
+    S.speed = Math.min(800, Math.max(20, Math.round((S.speed + delta) / 10) * 10));
+    $('i-speed').value = S.speed;
+    $('i-speed-val').textContent = S.speed + ' px/s';
+    $('f-speed-val').textContent = S.speed;
+    scheduleSave();
+  }
+
+  /* ================= 全屏（含 iPhone 不支持原生全屏时的伪全屏兜底） ================= */
+  function isFullscreen() {
+    return document.fullscreenElement === root ||
+           document.webkitFullscreenElement === root ||
+           root.classList.contains('pseudo-fs');
+  }
+  function enterFullscreen() {
+    root.classList.add('is-full');
+    if (root.requestFullscreen) {
+      const p = root.requestFullscreen();
+      if (p && p.catch) p.catch(() => pseudoFullscreen(true));
+    } else if (root.webkitRequestFullscreen) {
+      try { root.webkitRequestFullscreen(); } catch (e) { pseudoFullscreen(true); }
+    } else {
+      pseudoFullscreen(true);
+    }
+    setTimeout(() => { $('fs-tip').classList.add('show'); setTimeout(() => $('fs-tip').classList.remove('show'), 3200); }, 200);
+  }
+  function exitFullscreen() {
+    if (document.fullscreenElement === root && document.exitFullscreen) {
+      const p = document.exitFullscreen(); if (p && p.catch) p.catch(() => {});
+    } else if (document.webkitFullscreenElement === root && document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+    pseudoFullscreen(false);
+  }
+  function pseudoFullscreen(on) {
+    root.classList.toggle('pseudo-fs', on);
+    root.classList.toggle('is-full', on || isFullscreen());
+    document.body.classList.toggle('fs-lock', isFullscreen());
+  }
+  function toggleFullscreen() { isFullscreen() ? exitFullscreen() : enterFullscreen(); }
+  document.addEventListener('fullscreenchange', syncFullscreen);
+  document.addEventListener('webkitfullscreenchange', syncFullscreen);
+  function syncFullscreen() {
+    const fs = isFullscreen();
+    root.classList.toggle('is-full', fs);
+    document.body.classList.toggle('fs-lock', fs);
+    if (!fs) { root.classList.remove('pseudo-fs'); floatBar.classList.remove('force-hidden'); }
+    pokeFloat();
+  }
+
+  /* ================= 全屏浮动控制条（播放时自动隐藏，鼠标移动唤出） ================= */
+  function pokeFloat() {
+    if (!isFullscreen()) return;
+    floatBar.classList.remove('force-hidden');
+    floatBar.classList.add('show');
+    clearTimeout(floatTimer);
+    if (playState === 'playing') {
+      floatTimer = setTimeout(() => floatBar.classList.remove('show'), 2500);
+    }
+  }
+  root.addEventListener('mousemove', pokeFloat);
+  root.addEventListener('touchstart', pokeFloat, { passive: true });
+
+  function togglePanel() {
+    if (isFullscreen()) {
+      floatBar.classList.toggle('force-hidden');
+      showToast(floatBar.classList.contains('force-hidden') ? '控件已隐藏，按 H 唤回' : '控件已显示');
+    } else {
+      document.body.classList.toggle('panel-hidden');
+    }
+  }
+
+  /* ================= 屏幕常亮（Wake Lock API） ================= */
+  async function acquireWakeLock() {
+    if (!S.keepAwake || !('wakeLock' in navigator)) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && playState === 'playing') acquireWakeLock();
+  });
+
+  /* ================= Toast ================= */
+  function showToast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  /* ================= 事件绑定 ================= */
+  function bindEvents() {
+    // 文本输入：实时预览，不打断正在进行的滚动
+    $('i-text').addEventListener('input', e => {
+      S.text = e.target.value;
+      renderText(); applyStyles();
+      if (S.mode !== 'static') {
+        setupScrollLayout();
+        if (playState !== 'playing') { resetPosition(); applyTransform(); }
+      }
+      scheduleSave();
+    });
+    $('btn-clear').addEventListener('click', () => {
+      S.text = ''; $('i-text').value = '';
+      renderText(); applyStyles(); scheduleSave(); $('i-text').focus();
+    });
+
+    // 分段选择器
+    document.querySelectorAll('.seg').forEach(seg => {
+      const field = seg.dataset.seg;
+      seg.addEventListener('click', e => {
+        const btn = e.target.closest('button'); if (!btn) return;
+        S[field] = btn.dataset.v;
+        seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+        if (field === 'mode') updateModeBoxes();
+        // 模式 / 方向 / 对齐变化：停止当前播放并复位，行为可预期
+        cancelRaf(); playState = 'idle'; nudgeX = nudgeY = 0;
+        renderAll(); updatePlayUI(); scheduleSave();
+      });
+    });
+
+    // 开关类
+    $('i-loop').addEventListener('change', e => { S.loop = e.target.checked; scheduleSave(); });
+    $('i-trans').addEventListener('change', e => { S.transparent = e.target.checked; applyStyles(); scheduleSave(); });
+    $('i-autofit').addEventListener('change', e => { S.autoFit = e.target.checked; applyStyles(); scheduleSave(); });
+    $('i-stroke').addEventListener('change', e => { S.strokeOn = e.target.checked; updateCondRows(); applyStyles(); scheduleSave(); });
+    $('i-keep').addEventListener('change', e => {
+      S.keepAwake = e.target.checked;
+      if (!S.keepAwake) releaseWakeLock();
+      else if (playState === 'playing') acquireWakeLock();
+      scheduleSave();
+    });
+
+    // 下拉选择
+    $('i-font').addEventListener('change', e => { S.font = e.target.value; applyStyles(); scheduleSave(); });
+    $('i-fweight').addEventListener('change', e => { S.fontWeight = e.target.value; applyStyles(); scheduleSave(); });
+    $('i-effect').addEventListener('change', e => { S.effect = e.target.value; updateCondRows(); applyStyles(); scheduleSave(); });
+
+    // 滑块
+    bindRange('i-speed', 'speed', v => v + ' px/s', null);
+    bindRange('i-fsize', 'fontSize', v => v + 'px', () => { S.autoFit = false; $('i-autofit').checked = false; applyStyles(); });
+    bindRange('i-lh', 'lineHeight', v => Number(v).toFixed(2), applyStyles, true);
+    bindRange('i-ls', 'letterSpacing', v => v + 'px', applyStyles);
+    bindRange('i-stroke-w', 'strokeWidth', v => v + 'px', applyStyles);
+    bindRange('i-glow', 'glow', v => v, applyStyles);
+
+    // 颜色（取色器 + 十六进制输入双向同步）
+    bindColor('i-color', 'i-color-hex', 'color');
+    bindColor('i-bg', 'i-bg-hex', 'bg');
+    bindColor('i-stroke-c', null, 'strokeColor');
+    document.querySelectorAll('[data-swatch]').forEach(sw => {
+      sw.addEventListener('click', () => {
+        const key = sw.dataset.swatch === 'color' ? 'color' : 'bg';
+        S[key] = sw.dataset.c;
+        $('i-' + key).value = S[key]; $('i-' + key + '-hex').value = S[key];
+        applyStyles(); scheduleSave();
+      });
+    });
+
+    // 播放按钮
+    $('btn-play').addEventListener('click', togglePlay);
+    $('btn-stop').addEventListener('click', stopPlay);
+    $('btn-reset').addEventListener('click', resetPlay);
+    $('btn-full').addEventListener('click', toggleFullscreen);
+    $('btn-hide-panel').addEventListener('click', togglePanel);
+    $('show-panel-btn').addEventListener('click', () => document.body.classList.remove('panel-hidden'));
+    // 全屏浮动条
+    $('f-play').addEventListener('click', togglePlay);
+    $('f-reset').addEventListener('click', resetPlay);
+    $('f-sup').addEventListener('click', () => changeSpeed(20));
+    $('f-sdown').addEventListener('click', () => changeSpeed(-20));
+    $('f-hide').addEventListener('click', togglePanel);
+    $('f-exit').addEventListener('click', exitFullscreen);
+    // 双击舞台快速全屏
+    stage.addEventListener('dblclick', toggleFullscreen);
+
+    // 快捷键
+    document.addEventListener('keydown', onKeydown);
+
+    // 舞台尺寸变化：重算缩放比例（全屏 / 旋转屏幕 / 拖窗）
+    const ro = new ResizeObserver(() => {
+      scaleUnit = Math.max(0.2, stage.clientHeight / 900);
+      applyStyles();
+      if (S.mode !== 'static') { setupScrollLayout(); applyTransform(); }
+    });
+    ro.observe(stage);
+    window.addEventListener('orientationchange', () => setTimeout(() => { applyStyles(); }, 300));
+
+    // 可折叠面板：点击标题展开/收起
+    document.querySelectorAll('.collapsible .collapse-header').forEach(header => {
+      header.addEventListener('click', () => {
+        header.closest('.collapsible').classList.toggle('collapsed');
+      });
+    });
+
+    // 各板块恢复默认按钮
+    document.querySelectorAll('[data-reset]').forEach(btn => {
+      btn.addEventListener('click', () => resetSection(btn.dataset.reset));
+    });
+  }
+
+  function bindRange(id, key, fmt, extra, isFloat) {
+    $(id).addEventListener('input', e => {
+      S[key] = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+      $(id + '-val').textContent = fmt(S[key]);
+      if (key === 'speed') $('f-speed-val').textContent = S.speed;
+      if (extra) extra();
+      scheduleSave();
+    });
+  }
+  function bindColor(colorId, hexId, key) {
+    $(colorId).addEventListener('input', e => {
+      S[key] = e.target.value;
+      if (hexId) $(hexId).value = e.target.value;
+      applyStyles(); scheduleSave();
+    });
+    if (hexId) $(hexId).addEventListener('change', e => {
+      const v = e.target.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        S[key] = v.toLowerCase(); $(colorId).value = S[key];
+        applyStyles(); scheduleSave();
+      } else {
+        e.target.value = S[key]; showToast('请输入 #RRGGBB 格式颜色');
+      }
+    });
+  }
+  function updateCondRows() {
+    $('row-glow').style.display = S.effect === 'glow' ? '' : 'none';
+    $('row-stroke-w').style.display = S.strokeOn ? '' : 'none';
+    $('row-stroke-c').style.display = S.strokeOn ? '' : 'none';
+  }
+
+  function setFontSize(v) {
+    S.fontSize = Math.min(400, Math.max(16, Math.round(v)));
+    $('i-fsize').value = S.fontSize;
+    $('i-fsize-val').textContent = S.fontSize + 'px';
+    scheduleSave();
+  }
+
+  /* ================= 键盘快捷键 ================= */
+  function onKeydown(e) {
+    // Esc：原生全屏由浏览器处理；这里负责退出伪全屏
+    if (e.key === 'Escape') {
+      if (root.classList.contains('pseudo-fs')) pseudoFullscreen(false);
+      return;
+    }
+    const t = e.target;
+    const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(t.tagName) || t.isContentEditable;
+    if (typing) return; // 输入文字时不劫持按键
+    switch (e.code) {
+      case 'Space': e.preventDefault(); togglePlay(); break;
+      case 'KeyF': toggleFullscreen(); break;
+      case 'KeyH': togglePanel(); break;
+      case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight':
+        e.preventDefault(); arrowControl(e.code, e.shiftKey); break;
+    }
+  }
+  function arrowControl(code, shift) {
+    const k = shift ? 3 : 1;
+    if (S.mode !== 'static') {
+      // 滚动模式：上下调速，左右微调位置
+      if (code === 'ArrowUp') changeSpeed(20 * k);
+      else if (code === 'ArrowDown') changeSpeed(-20 * k);
+      else { pos += (code === 'ArrowRight' ? 1 : -1) * 40 * scaleUnit * k; applyTransform(); }
+    } else {
+      // 静态模式：上下调字号（Shift 上下移动），左右水平移动
+      if (code === 'ArrowUp' && shift) nudgeY -= 8 * scaleUnit * k;
+      else if (code === 'ArrowDown' && shift) nudgeY += 8 * scaleUnit * k;
+      else if (code === 'ArrowUp') setFontSize(S.fontSize + 4 * k);
+      else if (code === 'ArrowDown') setFontSize(S.fontSize - 4 * k);
+      else if (code === 'ArrowLeft') nudgeX -= 8 * scaleUnit * k;
+      else nudgeX += 8 * scaleUnit * k;
+      applyStyles();
+    }
+  }
+
+  /* ================= 初始化 ================= */
+  load();
+  syncControls();
+  updateCondRows();
+  bindEvents();
+  scaleUnit = Math.max(0.2, stage.clientHeight / 900);
+  renderAll();
+  updatePlayUI();
+  </script>
+</body>
+</html>

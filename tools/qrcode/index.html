@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>二维码生成器 - 工具箱</title>
+  <style>
+    /* ── 设计令牌（与首页 / 工具箱保持一致）────────────────── */
+    :root {
+      --bg:#08080a; --surface:rgba(255,255,255,.022); --surface-hover:rgba(255,255,255,.045);
+      --fill:rgba(255,255,255,.05); --line:rgba(255,255,255,.075); --line-strong:rgba(255,255,255,.17);
+      --text:#f0f0f2; --muted:#8a8a93; --faint:#5a5a63; --live:#3ddc84;
+      --ease:cubic-bezier(.22,.8,.24,1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0; min-height: 100vh;
+      color: var(--text); background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                   "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px; line-height: 1.6; letter-spacing: .01em;
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      padding: 40px 28px 56px;
+    }
+
+    /* 顶部极淡冷灰光晕，制造纵深 */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(60rem 32rem at 50% -12%, rgba(150, 165, 200, .10), transparent 62%),
+        radial-gradient(38rem 22rem at 88% 4%,  rgba(120, 140, 190, .05), transparent 60%);
+    }
+
+    /* 细腻噪点，避免大面积纯黑显得平板 */
+    body::after {
+      content: ""; position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::selection { background: rgba(255, 255, 255, .16); }
+
+    a { color: inherit; text-decoration: none; }
+
+    :focus-visible { outline: 1px solid var(--line-strong); outline-offset: 3px; border-radius: 10px; }
+
+    .wrap { position: relative; z-index: 1; width: min(1080px, 100%); margin: 0 auto; }
+
+    /* ── 顶栏 ──────────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      padding-bottom: 22px; margin-bottom: 30px; border-bottom: 1px solid var(--line);
+    }
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-size: .95rem; font-weight: 600; letter-spacing: .06em;
+    }
+    .brand .mark {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--live);
+      box-shadow: 0 0 0 4px rgba(61, 220, 132, .10);
+      animation: breathe 3.2s var(--ease) infinite;
+    }
+    @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+    .brand .slash { color: var(--faint); font-weight: 400; }
+    .brand .mark-sub { color: var(--muted); font-weight: 400; }
+    .nav-links { display: flex; gap: 26px; }
+    .nav-links a {
+      position: relative; font-size: .88rem; color: var(--muted);
+      transition: color .25s var(--ease);
+    }
+    .nav-links a::after {
+      content: ""; position: absolute; left: 0; bottom: -4px; width: 100%; height: 1px;
+      background: currentColor; transform: scaleX(0); transform-origin: left;
+      transition: transform .3s var(--ease);
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+
+    /* ── 标题区 ────────────────────────────────────────────── */
+    .hero { padding: 6px 0 34px; }
+    .hero h1 {
+      margin: 0 0 10px; font-size: clamp(1.6rem, 4vw, 2.05rem);
+      font-weight: 600; letter-spacing: -.02em; line-height: 1.15;
+    }
+    .hero p { margin: 0; max-width: 62ch; color: var(--muted); font-size: .95rem; }
+
+    .layout {
+      display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 20px; align-items: start;
+    }
+    .panel { min-width: 0; }
+
+    /* ── 面板卡片 ──────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+      padding: 22px 24px; margin-bottom: 16px;
+      transition: background .3s var(--ease), border-color .3s var(--ease), transform .3s var(--ease);
+    }
+    .card:hover {
+      background: var(--surface-hover); border-color: var(--line-strong); transform: translateY(-2px);
+    }
+    .card h3 {
+      display: flex; align-items: center; gap: 9px; margin: 0 0 16px;
+      font-size: .72rem; font-weight: 500; letter-spacing: .18em;
+      text-transform: uppercase; color: var(--faint);
+    }
+    .card h3 svg { width: 16px; height: 16px; }
+
+    /* ── 内容类型标签 ──────────────────────────────────────── */
+    .type-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+    .tab {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 12px 6px; background: transparent; border: 1px solid var(--line);
+      border-radius: 12px; color: var(--muted); font-size: .82rem; text-align: center;
+      cursor: pointer; user-select: none;
+      transition: color .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease);
+    }
+    .tab svg { width: 19px; height: 19px; }
+    .tab:hover { color: var(--text); border-color: var(--line-strong); }
+    .tab.active { background: var(--fill); border-color: var(--line-strong); color: var(--text); }
+
+    /* ── 表单 ──────────────────────────────────────────────── */
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: 7px; }
+    .field .hint { font-size: .76rem; color: var(--faint); margin-top: 6px; }
+    textarea, input[type="text"], input[type="url"], input[type="password"], select {
+      width: 100%; padding: 12px 14px; background: var(--surface);
+      border: 1px solid var(--line); border-radius: 12px; color: var(--text);
+      font: inherit; font-size: .9rem; outline: none;
+      transition: border-color .25s var(--ease), background .25s var(--ease);
+    }
+    textarea { resize: vertical; min-height: 96px; line-height: 1.6; }
+    textarea:focus, input:focus, select:focus { border-color: var(--line-strong); background: var(--surface-hover); }
+    input::placeholder, textarea::placeholder { color: var(--faint); }
+    select { appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a5a63' stroke-width='1.5'><path d='M6 9l6 6 6-6'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px; color-scheme: dark; cursor: pointer; }
+    select option { background: #121216; color: var(--text); }
+
+    .row { display: flex; gap: 12px; }
+    .row .field { flex: 1; min-width: 0; }
+    .inline-hint { font-size: .78rem; color: var(--faint); }
+
+    .sample-btn {
+      margin-left: 8px; padding: 3px 10px; background: transparent;
+      border: 1px solid var(--line); border-radius: 999px;
+      color: var(--muted); font: inherit; font-size: .74rem; cursor: pointer;
+      transition: color .25s var(--ease), border-color .25s var(--ease);
+    }
+    .sample-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    /* ── 个性化颜色 ────────────────────────────────────────── */
+    .color-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .color-row .swatch { display: flex; flex: none; }
+    .color-row input[type="color"] {
+      -webkit-appearance: none; appearance: none;
+      width: 36px; height: 36px; padding: 0; border: 1px solid var(--line);
+      border-radius: 10px; background: transparent; cursor: pointer;
+    }
+    .color-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    .color-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 8px; }
+    .color-row input[type="color"]::-moz-color-swatch { border: none; border-radius: 8px; }
+    .color-row .hex-label {
+      min-width: 96px; padding: 8px 12px; text-align: center;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+      color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums;
+    }
+    .color-row .label-txt { flex: 1; min-width: 0; font-size: .86rem; color: var(--muted); }
+
+    /* ── 纠错级别分段控件 ──────────────────────────────────── */
+    .ecl-group { display: flex; gap: 8px; }
+    .ecl-btn {
+      flex: 1; padding: 9px 0; background: transparent; border: 1px solid var(--line);
+      border-radius: 12px; color: var(--muted); font: inherit; font-size: .78rem;
+      text-align: center; cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease);
+    }
+    .ecl-btn:hover { color: var(--text); border-color: var(--line-strong); }
+    .ecl-btn.active { background: var(--fill); border-color: var(--line-strong); color: var(--text); }
+
+    /* ── Logo / 图片上传 ───────────────────────────────────── */
+    .logo-area { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .file-btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+      background: transparent; border: 1px solid var(--line); border-radius: 12px;
+      color: var(--muted); font-size: .82rem; cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease);
+    }
+    .file-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--fill); }
+    .file-btn input { display: none; }
+    .logo-preview {
+      width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+      object-fit: contain; background: #fff;
+    }
+    .logo-remove {
+      padding: 5px 12px; background: transparent; border: 1px solid var(--line);
+      border-radius: 999px; color: var(--muted); font: inherit; font-size: .76rem;
+      cursor: pointer; transition: color .25s var(--ease), border-color .25s var(--ease);
+    }
+    .logo-remove:hover { color: var(--text); border-color: var(--line-strong); }
+
+    /* ── 生成按钮（主按钮）─────────────────────────────────── */
+    .gen-btn {
+      width: 100%; padding: 12px 20px; background: var(--fill);
+      border: 1px solid var(--line-strong); border-radius: 12px; color: var(--text);
+      font: inherit; font-size: .95rem; font-weight: 500; letter-spacing: .04em;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease), transform .1s var(--ease);
+    }
+    .gen-btn:hover { background: rgba(255, 255, 255, .09); }
+    .gen-btn:active { transform: translateY(1px); }
+
+    /* ── 结果区 ────────────────────────────────────────────── */
+    .result { position: sticky; top: 20px; min-width: 0; }
+    .view-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .view-tab {
+      display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px;
+      background: transparent; border: 1px solid var(--line); border-radius: 999px;
+      color: var(--muted); font: inherit; font-size: .84rem; cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease);
+    }
+    .view-tab svg { width: 16px; height: 16px; }
+    .view-tab:hover { color: var(--text); border-color: var(--line-strong); }
+    .view-tab.active { background: var(--fill); border-color: var(--line-strong); color: var(--text); }
+
+    /* ── 画布舞台 ──────────────────────────────────────────── */
+    .stage {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; min-height: 340px; padding: 22px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    }
+    /* canvas 只加外框：不加滤镜 / 透明度 / 变换，显示尺寸完全由 JS 控制 */
+    .stage canvas { max-width: 100%; height: auto; border-radius: 10px; display: block; }
+    #stage-qr, #stage-bead {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      max-width: 100%; padding: 10px;
+      background: rgba(0, 0, 0, .34); border: 1px solid var(--line); border-radius: 14px;
+    }
+    .stage-empty { color: var(--muted); font-size: .9rem; text-align: center; line-height: 1.8; }
+
+    .info { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .info-item {
+      flex: 1; min-width: 88px; padding: 12px 8px; text-align: center;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    }
+    .info-item .v {
+      font-size: 1.05rem; font-weight: 600; color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .info-item .k { font-size: .7rem; letter-spacing: .1em; color: var(--faint); margin-top: 4px; }
+
+    /* ── 图例 ──────────────────────────────────────────────── */
+    .legend { width: 100%; margin-top: 4px; }
+    .legend-title { font-size: .78rem; color: var(--faint); margin-bottom: 8px; }
+    .legend-item {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 9px 12px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    }
+    .legend-item .sw { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--line-strong); }
+    .legend-item .code { font-weight: 600; font-size: .84rem; min-width: 40px; }
+    .legend-item .name { flex: 1; min-width: 0; color: var(--muted); font-size: .78rem; }
+    .legend-item .cnt { color: var(--text); font-size: .78rem; font-variant-numeric: tabular-nums; }
+
+    /* ── 下载按钮（初始 disabled）──────────────────────────── */
+    .downloads { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .dl-btn {
+      flex: 1; min-width: 150px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 16px; background: transparent; border: 1px solid var(--line);
+      border-radius: 12px; color: var(--muted); font: inherit; font-size: .88rem;
+      cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease),
+                  background .3s var(--ease), opacity .3s var(--ease);
+    }
+    .dl-btn svg { width: 16px; height: 16px; }
+    .dl-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--fill); }
+    .dl-btn.primary { background: var(--fill); border-color: var(--line-strong); color: var(--text); }
+    .dl-btn.primary:hover { background: rgba(255, 255, 255, .09); }
+    .dl-btn:disabled,
+    .dl-btn:disabled:hover {
+      opacity: .34; cursor: not-allowed;
+      background: transparent; border-color: var(--line); color: var(--faint);
+    }
+
+    /* ── 提示条 ────────────────────────────────────────────── */
+    .msg {
+      display: none; margin-top: 14px; padding: 11px 14px; border-radius: 12px;
+      border: 1px solid transparent; font-size: .84rem; line-height: 1.6;
+    }
+    .msg.show { display: block; }
+    .msg.err { background: rgba(255, 107, 107, .08); border-color: rgba(255, 107, 107, .30); color: #ff9b9b; }
+    .msg.warn { background: rgba(255, 212, 59, .08); border-color: rgba(255, 212, 59, .26); color: #ffd97a; }
+    .msg.ok { background: rgba(61, 220, 132, .08); border-color: rgba(61, 220, 132, .26); color: var(--live); }
+
+    /* JS 依赖：classList.toggle('hidden') 的显隐开关，必须保留 */
+    .hidden { display: none !important; }
+
+    /* ── 入场动画 ──────────────────────────────────────────── */
+    .rise { opacity: 0; transform: translateY(12px); animation: rise .8s var(--ease) forwards; }
+    .d1 { animation-delay: .05s; }
+    .d2 { animation-delay: .13s; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ── 响应式 ────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      body { padding: 28px 20px 40px; }
+      .topbar { margin-bottom: 24px; }
+      .hero { padding: 4px 0 28px; }
+      .nav-links { gap: 18px; }
+      .layout { grid-template-columns: 1fr; }
+      .result { position: static; }
+      .stage { min-height: 280px; }
+    }
+
+    @media (max-width: 520px) {
+      .topbar { flex-wrap: wrap; gap: 14px; }
+      .type-tabs { gap: 6px; }
+      .tab { padding: 10px 4px; font-size: .78rem; }
+      .card { padding: 18px 16px; }
+      .row { flex-direction: column; gap: 0; }
+      .stage { padding: 14px; }
+      .downloads { flex-direction: column; }
+      .dl-btn { min-width: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001s !important;
+      }
+      .rise { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar rise">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="brand-text">沫友乾</span>
+        <span class="slash">/</span>
+        <span class="mark-sub">二维码生成器</span>
+      </div>
+      <nav class="nav-links">
+        <a href="../../index.html">首页</a>
+        <a href="../index.html">← 返回工具箱</a>
+      </nav>
+    </header>
+
+    <section class="hero rise d1">
+      <h1>二维码生成器</h1>
+      <p>纯前端生成，数据不上传；支持文本 / WiFi / 图片，可换色、加 Logo、转拼豆图纸</p>
+    </section>
+
+    <div class="layout">
+      <!-- 控制面板 -->
+      <div class="panel">
+        <div class="type-tabs" id="type-tabs">
+          <div class="tab active" data-type="text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+            <span>文本 / 链接</span>
+          </div>
+          <div class="tab" data-type="wifi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01M2 8.82a15 15 0 0 1 20 0"/></svg>
+            <span>WiFi</span>
+          </div>
+          <div class="tab" data-type="image">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span>图片</span>
+          </div>
+        </div>
+
+        <!-- 文本 / 链接 -->
+        <div class="card" id="pane-text">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+            输入内容
+          </h3>
+          <div class="field">
+            <label>文本或链接<button class="sample-btn" id="sample-url">填入示例链接</button></label>
+            <textarea id="text-input" placeholder="输入网址、文字、联系方式等任意内容…"></textarea>
+            <div class="hint">示例：https://example.com、名片信息、一段文字</div>
+          </div>
+        </div>
+
+        <!-- WiFi -->
+        <div class="card hidden" id="pane-wifi">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01M2 8.82a15 15 0 0 1 20 0"/></svg>
+            网络信息
+          </h3>
+          <div class="field">
+            <label>WiFi 名称（SSID）</label>
+            <input type="text" id="wifi-ssid" placeholder="例如：MyHome_5G">
+          </div>
+          <div class="field">
+            <label>密码</label>
+            <input type="password" id="wifi-pwd" placeholder="无密码则留空">
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>加密方式</label>
+              <select id="wifi-auth">
+                <option value="WPA">WPA / WPA2 / WPA3</option>
+                <option value="WEP">WEP</option>
+                <option value="nopass">无密码</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>隐藏网络</label>
+              <select id="wifi-hidden">
+                <option value="false">否</option>
+                <option value="true">是</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <div class="hint">手机相机 / 微信扫码即可自动连接该 WiFi</div>
+          </div>
+        </div>
+
+        <!-- 图片 -->
+        <div class="card hidden" id="pane-image">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            图片来源
+          </h3>
+          <div class="field">
+            <label>图片链接（URL）<button class="sample-btn" id="sample-img">填入示例</button></label>
+            <input type="url" id="image-url" placeholder="https://…/image.png">
+            <div class="hint">扫码后打开该图片链接</div>
+          </div>
+          <div class="field">
+            <label>或上传本地图片（小图标 / 小图）</label>
+            <div class="logo-area">
+              <label class="file-btn">
+                <input type="file" id="image-file" accept="image/*">
+                选择图片
+              </label>
+              <img class="logo-preview hidden" id="image-preview" alt="图片预览">
+              <button class="logo-remove hidden" id="image-clear">移除</button>
+            </div>
+            <div class="hint">本地图片会直接编码进二维码，容量有限（约 1KB 以内）；大图请先上传到图床再粘贴链接</div>
+          </div>
+        </div>
+
+        <!-- 个性化 -->
+        <div class="card">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/></svg>
+            个性化
+          </h3>
+          <div class="color-row">
+            <span class="label-txt">前景色</span>
+            <div class="swatch"><input type="color" id="fg-color" value="#111111"></div>
+            <span class="hex-label" id="fg-hex">#111111</span>
+          </div>
+          <div class="color-row">
+            <span class="label-txt">背景色</span>
+            <div class="swatch"><input type="color" id="bg-color" value="#ffffff"></div>
+            <span class="hex-label" id="bg-hex">#ffffff</span>
+          </div>
+          <div class="field">
+            <label>纠错级别（越高越耐遮挡，放 Logo 请用 H）</label>
+            <div class="ecl-group" id="ecl-group">
+              <button class="ecl-btn" data-ecl="L">L · 7%</button>
+              <button class="ecl-btn" data-ecl="M">M · 15%</button>
+              <button class="ecl-btn" data-ecl="Q">Q · 25%</button>
+              <button class="ecl-btn active" data-ecl="H">H · 30%</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>中心 Logo（可选，建议配 H 纠错）</label>
+            <div class="logo-area">
+              <label class="file-btn">
+                <input type="file" id="logo-file" accept="image/*">
+                上传 Logo
+              </label>
+              <img class="logo-preview hidden" id="logo-preview" alt="Logo 预览">
+              <button class="logo-remove hidden" id="logo-clear">移除</button>
+            </div>
+          </div>
+        </div>
+
+        <button class="gen-btn" id="gen-btn">生成二维码</button>
+      </div>
+
+      <!-- 结果区 -->
+      <div class="result">
+        <div class="view-tabs" id="view-tabs">
+          <button class="view-tab active" data-view="qr">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/></svg>
+            二维码
+          </button>
+          <button class="view-tab" data-view="bead">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="4" height="4" rx="1"/><rect x="10" y="3" width="4" height="4" rx="1"/><rect x="17" y="3" width="4" height="4" rx="1"/><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="17" y="10" width="4" height="4" rx="1"/><rect x="3" y="17" width="4" height="4" rx="1"/><rect x="10" y="17" width="4" height="4" rx="1"/><rect x="17" y="17" width="4" height="4" rx="1"/></svg>
+            拼豆图纸
+          </button>
+        </div>
+
+        <div class="stage">
+          <div class="stage-empty" id="stage-empty">在左侧输入内容后点击「生成二维码」</div>
+          <div class="hidden" id="stage-qr">
+            <canvas id="qr-canvas"></canvas>
+          </div>
+          <div class="hidden" id="stage-bead">
+            <canvas id="bead-canvas"></canvas>
+            <div class="legend" id="bead-legend"></div>
+          </div>
+        </div>
+
+        <div class="info hidden" id="info">
+          <div class="info-item"><div class="v" id="info-version">-</div><div class="k">版本</div></div>
+          <div class="info-item"><div class="v" id="info-modules">-</div><div class="k">模块数</div></div>
+          <div class="info-item"><div class="v" id="info-length">-</div><div class="k">内容长度</div></div>
+          <div class="info-item"><div class="v" id="info-ecl">-</div><div class="k">纠错级别</div></div>
+        </div>
+
+        <div class="downloads">
+          <button class="dl-btn primary" id="dl-qr" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            下载二维码原图
+          </button>
+          <button class="dl-btn success" id="dl-bead" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            下载拼豆图纸
+          </button>
+        </div>
+
+        <div class="msg" id="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =====================================================================
+     * QR Code 编码器（纯手写实现，遵循 ISO/IEC 18004）
+     * 仅使用字节（Byte）模式，自动选择版本 1-40，支持 L/M/Q/H 纠错
+     * 输出模块矩阵，供页面自行渲染
+     * ===================================================================== */
+    /* ====QR-CORE-BEGIN==== */
+    var QRMath = (function () {
+      var EXP_TABLE = new Array(256);
+      var LOG_TABLE = new Array(256);
+      for (var i = 0; i < 8; i++) { EXP_TABLE[i] = 1 << i; }
+      for (var i = 8; i < 256; i++) {
+        EXP_TABLE[i] = EXP_TABLE[i - 4] ^ EXP_TABLE[i - 5] ^ EXP_TABLE[i - 6] ^ EXP_TABLE[i - 8];
+      }
+      for (var i = 0; i < 255; i++) { LOG_TABLE[EXP_TABLE[i]] = i; }
+      return {
+        glog: function (n) { if (n < 1) { throw 'glog(' + n + ')'; } return LOG_TABLE[n]; },
+        gexp: function (n) {
+          while (n < 0) { n += 255; }
+          while (n >= 256) { n -= 255; }
+          return EXP_TABLE[n];
+        }
+      };
+    })();
+
+    function qrPolynomial(num, shift) {
+      var offset = 0;
+      while (offset < num.length && num[offset] === 0) { offset++; }
+      var _num = new Array(num.length - offset + shift).fill(0);
+      for (var i = 0; i < num.length - offset; i++) { _num[i] = num[i + offset]; }
+      return {
+        getAt: function (i) { return _num[i]; },
+        getLength: function () { return _num.length; },
+        multiply: function (e) {
+          var n = new Array(this.getLength() + e.getLength() - 1).fill(0);
+          for (var i = 0; i < this.getLength(); i++) {
+            for (var j = 0; j < e.getLength(); j++) {
+              n[i + j] ^= QRMath.gexp(QRMath.glog(this.getAt(i)) + QRMath.glog(e.getAt(j)));
+            }
+          }
+          return qrPolynomial(n, 0);
+        },
+        mod: function (e) {
+          if (this.getLength() - e.getLength() < 0) { return this; }
+          var ratio = QRMath.glog(this.getAt(0)) - QRMath.glog(e.getAt(0));
+          var n = [];
+          for (var i = 0; i < this.getLength(); i++) { n[i] = this.getAt(i); }
+          for (var i = 0; i < e.getLength(); i++) { n[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i)) + ratio); }
+          return qrPolynomial(n, 0).mod(e);
+        }
+      };
+    }
+
+    var QRUtil = (function () {
+      var PATTERN_POSITION_TABLE = [
+        [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42],
+        [6, 26, 46], [6, 28, 50], [6, 30, 54], [6, 32, 58], [6, 34, 62],
+        [6, 26, 46, 66], [6, 26, 48, 70], [6, 26, 50, 74], [6, 30, 54, 78],
+        [6, 30, 56, 82], [6, 30, 58, 86], [6, 34, 62, 90], [6, 28, 50, 72, 94],
+        [6, 26, 50, 74, 98], [6, 30, 54, 78, 102], [6, 28, 54, 80, 106],
+        [6, 32, 58, 84, 110], [6, 30, 58, 86, 114], [6, 34, 62, 90, 118],
+        [6, 26, 50, 74, 98, 122], [6, 30, 54, 78, 102, 126], [6, 26, 52, 78, 104, 130],
+        [6, 30, 56, 82, 108, 134], [6, 34, 60, 86, 112, 138], [6, 30, 58, 86, 114, 142],
+        [6, 34, 62, 90, 118, 146], [6, 30, 54, 78, 102, 126, 150],
+        [6, 24, 50, 76, 102, 128, 154], [6, 28, 54, 80, 106, 132, 158],
+        [6, 32, 58, 84, 110, 136, 162], [6, 26, 54, 82, 110, 138, 166],
+        [6, 30, 58, 86, 114, 142, 170]
+      ];
+      var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+      var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+      var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+      function getBCHDigit(data) {
+        var d = 0;
+        while (data !== 0) { d++; data >>>= 1; }
+        return d;
+      }
+      return {
+        getBCHTypeInfo: function (data) {
+          var d = data << 10;
+          while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+            d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15)));
+          }
+          return ((data << 10) | d) ^ G15_MASK;
+        },
+        getBCHTypeNumber: function (data) {
+          var d = data << 12;
+          while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+            d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18)));
+          }
+          return (data << 12) | d;
+        },
+        getPatternPosition: function (t) { return PATTERN_POSITION_TABLE[t - 1]; },
+        getMaskFunction: function (m) {
+          switch (m) {
+            case 0: return function (i, j) { return (i + j) % 2 === 0; };
+            case 1: return function (i, j) { return i % 2 === 0; };
+            case 2: return function (i, j) { return j % 3 === 0; };
+            case 3: return function (i, j) { return (i + j) % 3 === 0; };
+            case 4: return function (i, j) { return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0; };
+            case 5: return function (i, j) { return ((i * j) % 2) + ((i * j) % 3) === 0; };
+            case 6: return function (i, j) { return (((i * j) % 2) + ((i * j) % 3)) % 2 === 0; };
+            case 7: return function (i, j) { return (((i * j) % 3) + ((i + j) % 2)) % 2 === 0; };
+            default: throw 'bad maskPattern:' + m;
+          }
+        },
+        getErrorCorrectPolynomial: function (len) {
+          var a = qrPolynomial([1], 0);
+          for (var i = 0; i < len; i++) { a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0)); }
+          return a;
+        },
+        getLengthInBits: function (type) { return type < 10 ? 8 : 16; },
+        getLostPoint: function (isDark, moduleCount) {
+          var lostPoint = 0;
+          for (var row = 0; row < moduleCount; row++) {
+            for (var col = 0; col < moduleCount; col++) {
+              var sameCount = 0;
+              var dark = isDark(row, col);
+              for (var r = -1; r <= 1; r++) {
+                if (row + r < 0 || moduleCount <= row + r) { continue; }
+                for (var c = -1; c <= 1; c++) {
+                  if (col + c < 0 || moduleCount <= col + c) { continue; }
+                  if (r === 0 && c === 0) { continue; }
+                  if (dark === isDark(row + r, col + c)) { sameCount++; }
+                }
+              }
+              if (sameCount > 5) { lostPoint += (3 + sameCount - 5); }
+            }
+          }
+          for (var row = 0; row < moduleCount - 1; row++) {
+            for (var col = 0; col < moduleCount - 1; col++) {
+              var count = 0;
+              if (isDark(row, col)) { count++; }
+              if (isDark(row + 1, col)) { count++; }
+              if (isDark(row, col + 1)) { count++; }
+              if (isDark(row + 1, col + 1)) { count++; }
+              if (count === 0 || count === 4) { lostPoint += 3; }
+            }
+          }
+          for (var row = 0; row < moduleCount; row++) {
+            for (var col = 0; col < moduleCount - 6; col++) {
+              if (isDark(row, col) && !isDark(row, col + 1) && isDark(row, col + 2) &&
+                  isDark(row, col + 3) && isDark(row, col + 4) && !isDark(row, col + 5) &&
+                  isDark(row, col + 6)) { lostPoint += 40; }
+            }
+          }
+          for (var col = 0; col < moduleCount; col++) {
+            for (var row = 0; row < moduleCount - 6; row++) {
+              if (isDark(row, col) && !isDark(row + 1, col) && isDark(row + 2, col) &&
+                  isDark(row + 3, col) && isDark(row + 4, col) && !isDark(row + 5, col) &&
+                  isDark(row + 6, col)) { lostPoint += 40; }
+            }
+          }
+          var darkCount = 0;
+          for (var col = 0; col < moduleCount; col++) {
+            for (var row = 0; row < moduleCount; row++) {
+              if (isDark(row, col)) { darkCount++; }
+            }
+          }
+          var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+          lostPoint += ratio * 10;
+          return lostPoint;
+        }
+      };
+    })();
+
+    // RS 纠错块表：[count, totalCount, dataCount] 三元组序列（ISO/IEC 18004）
+    var RS_BLOCK_TABLE = [
+      [1, 26, 19], [1, 26, 16], [1, 26, 13], [1, 26, 9],
+      [1, 44, 34], [1, 44, 28], [1, 44, 22], [1, 44, 16],
+      [1, 70, 55], [1, 70, 44], [2, 35, 17], [2, 35, 13],
+      [1, 100, 80], [2, 50, 32], [2, 50, 24], [4, 25, 9],
+      [1, 134, 108], [2, 67, 43], [2, 33, 15, 2, 34, 16], [2, 33, 11, 2, 34, 12],
+      [2, 86, 68], [4, 43, 27], [4, 43, 19], [4, 43, 15],
+      [2, 98, 78], [4, 49, 31], [2, 32, 14, 4, 33, 15], [4, 39, 13, 1, 40, 14],
+      [2, 121, 97], [2, 60, 38, 2, 61, 39], [4, 40, 18, 2, 41, 19], [4, 40, 14, 2, 41, 15],
+      [2, 146, 116], [3, 58, 36, 2, 59, 37], [4, 36, 16, 4, 37, 17], [4, 36, 12, 4, 37, 13],
+      [2, 86, 68, 2, 87, 69], [4, 69, 43, 1, 70, 44], [6, 43, 19, 2, 44, 20], [6, 43, 15, 2, 44, 16],
+      [4, 101, 81], [1, 80, 50, 4, 81, 51], [4, 50, 22, 4, 51, 23], [3, 36, 12, 8, 37, 13],
+      [2, 116, 92, 2, 117, 93], [6, 58, 36, 2, 59, 37], [4, 46, 20, 6, 47, 21], [7, 42, 14, 4, 43, 15],
+      [4, 133, 107], [8, 59, 37, 1, 60, 38], [8, 44, 20, 4, 45, 21], [12, 33, 11, 4, 34, 12],
+      [3, 145, 115, 1, 146, 116], [4, 64, 40, 5, 65, 41], [11, 36, 16, 5, 37, 17], [11, 36, 12, 5, 37, 13],
+      [5, 109, 87, 1, 110, 88], [5, 65, 41, 5, 66, 42], [5, 54, 24, 7, 55, 25], [11, 36, 12, 7, 37, 13],
+      [5, 122, 98, 1, 123, 99], [7, 73, 45, 3, 74, 46], [15, 43, 19, 2, 44, 20], [3, 45, 15, 13, 46, 16],
+      [1, 135, 107, 5, 136, 108], [10, 74, 46, 1, 75, 47], [1, 50, 22, 15, 51, 23], [2, 42, 14, 17, 43, 15],
+      [5, 150, 120, 1, 151, 121], [9, 69, 43, 4, 70, 44], [17, 50, 22, 1, 51, 23], [2, 42, 14, 19, 43, 15],
+      [3, 141, 113, 4, 142, 114], [3, 70, 44, 11, 71, 45], [17, 47, 21, 4, 48, 22], [9, 39, 13, 16, 40, 14],
+      [3, 135, 107, 5, 136, 108], [3, 67, 41, 13, 68, 42], [15, 54, 24, 5, 55, 25], [15, 43, 15, 10, 44, 16],
+      [4, 144, 116, 4, 145, 117], [17, 68, 42], [17, 50, 22, 6, 51, 23], [19, 46, 16, 6, 47, 17],
+      [2, 139, 111, 7, 140, 112], [17, 74, 46], [7, 54, 24, 16, 55, 25], [34, 37, 13],
+      [4, 151, 121, 5, 152, 122], [4, 75, 47, 14, 76, 48], [11, 54, 24, 14, 55, 25], [16, 45, 15, 14, 46, 16],
+      [6, 147, 117, 4, 148, 118], [6, 73, 45, 14, 74, 46], [11, 54, 24, 16, 55, 25], [30, 46, 16, 2, 47, 17],
+      [8, 132, 106, 4, 133, 107], [8, 75, 47, 13, 76, 48], [7, 54, 24, 22, 55, 25], [22, 45, 15, 13, 46, 16],
+      [10, 142, 114, 2, 143, 115], [19, 74, 46, 4, 75, 47], [28, 50, 22, 6, 51, 23], [33, 46, 16, 4, 47, 17],
+      [8, 152, 122, 4, 153, 123], [22, 73, 45, 3, 74, 46], [8, 53, 23, 26, 54, 24], [12, 45, 15, 28, 46, 16],
+      [3, 147, 117, 10, 148, 118], [3, 73, 45, 23, 74, 46], [4, 54, 24, 31, 55, 25], [11, 45, 15, 31, 46, 16],
+      [7, 146, 116, 7, 147, 117], [21, 73, 45, 7, 74, 46], [1, 53, 23, 37, 54, 24], [19, 45, 15, 26, 46, 16],
+      [5, 145, 115, 10, 146, 116], [19, 75, 47, 10, 76, 48], [15, 54, 24, 25, 55, 25], [23, 45, 15, 25, 46, 16],
+      [13, 145, 115, 3, 146, 116], [2, 74, 46, 29, 75, 47], [42, 54, 24, 1, 55, 25], [23, 45, 15, 28, 46, 16],
+      [17, 145, 115], [10, 74, 46, 23, 75, 47], [10, 54, 24, 35, 55, 25], [19, 45, 15, 35, 46, 16],
+      [17, 145, 115, 1, 146, 116], [14, 74, 46, 21, 75, 47], [29, 54, 24, 19, 55, 25], [11, 45, 15, 46, 46, 16],
+      [13, 145, 115, 6, 146, 116], [14, 74, 46, 23, 75, 47], [44, 54, 24, 7, 55, 25], [59, 46, 16, 1, 47, 17],
+      [12, 151, 121, 7, 152, 122], [12, 75, 47, 26, 76, 48], [39, 54, 24, 14, 55, 25], [22, 45, 15, 41, 46, 16],
+      [6, 151, 121, 14, 152, 122], [6, 75, 47, 34, 76, 48], [46, 54, 24, 10, 55, 25], [2, 45, 15, 64, 46, 16],
+      [17, 152, 122, 4, 153, 123], [29, 74, 46, 14, 75, 47], [49, 54, 24, 10, 55, 25], [24, 45, 15, 46, 46, 16],
+      [4, 152, 122, 18, 153, 123], [13, 74, 46, 32, 75, 47], [48, 54, 24, 14, 55, 25], [42, 45, 15, 32, 46, 16],
+      [20, 147, 117, 4, 148, 118], [40, 75, 47, 7, 76, 48], [43, 54, 24, 22, 55, 25], [10, 45, 15, 67, 46, 16],
+      [19, 148, 118, 6, 149, 119], [18, 75, 47, 31, 76, 48], [34, 54, 24, 34, 55, 25], [20, 45, 15, 61, 46, 16]
+    ];
+
+    function getRSBlocks(typeNumber, ecl) {
+      var eclIndex = { L: 0, M: 1, Q: 2, H: 3 }[ecl];
+      var table = RS_BLOCK_TABLE[(typeNumber - 1) * 4 + eclIndex];
+      var list = [];
+      for (var i = 0; i < table.length; i += 3) {
+        var count = table[i], total = table[i + 1], data = table[i + 2];
+        for (var j = 0; j < count; j++) { list.push({ totalCount: total, dataCount: data }); }
+      }
+      return list;
+    }
+
+    function QRBitBuffer() {
+      var buffer = [];
+      var length = 0;
+      return {
+        getLengthInBits: function () { return length; },
+        put: function (num, len) {
+          for (var i = 0; i < len; i++) {
+            this.putBit(((num >>> (len - i - 1)) & 1) === 1);
+          }
+        },
+        putBit: function (bit) {
+          var bufIndex = Math.floor(length / 8);
+          if (buffer.length <= bufIndex) { buffer.push(0); }
+          if (bit) { buffer[bufIndex] |= (0x80 >>> (length % 8)); }
+          length++;
+        },
+        getBuffer: function () { return buffer; }
+      };
+    }
+
+    function createBytes(buffer, rsBlocks) {
+      var offset = 0;
+      var maxDcCount = 0, maxEcCount = 0;
+      var dcdata = [], ecdata = [];
+      var dataArr = buffer.getBuffer();
+      for (var r = 0; r < rsBlocks.length; r++) {
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+        dcdata[r] = [];
+        for (var i = 0; i < dcCount; i++) {
+          dcdata[r][i] = 0xff & dataArr[i + offset];
+        }
+        offset += dcCount;
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = [];
+        for (var i = 0; i < ecCount; i++) {
+          var modIndex = i + modPoly.getLength() - ecCount;
+          ecdata[r][i] = (modIndex >= 0) ? modPoly.getAt(modIndex) : 0;
+        }
+      }
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i++) { totalCodeCount += rsBlocks[i].totalCount; }
+      var data = new Array(totalCodeCount);
+      var index = 0;
+      for (var i = 0; i < maxDcCount; i++) {
+        for (var r = 0; r < rsBlocks.length; r++) {
+          if (i < dcdata[r].length) { data[index++] = dcdata[r][i]; }
+        }
+      }
+      for (var i = 0; i < maxEcCount; i++) {
+        for (var r = 0; r < rsBlocks.length; r++) {
+          if (i < ecdata[r].length) { data[index++] = ecdata[r][i]; }
+        }
+      }
+      return data;
+    }
+
+    // 生成一个二维码，返回 { getModuleCount(), isDark(row,col) }
+    function makeQRCode(content, ecl) {
+      var PAD0 = 0xEC, PAD1 = 0x11;
+      var bytes = Array.prototype.slice.call(new TextEncoder().encode(content));
+      var typeNumber = 1;
+      var lengthBits, headerBits;
+      var chosen = false;
+      for (; typeNumber <= 40; typeNumber++) {
+        lengthBits = QRUtil.getLengthInBits(typeNumber);
+        headerBits = 4 + lengthBits + bytes.length * 8;
+        var totalDataCount = 0;
+        var rsBlocks = getRSBlocks(typeNumber, ecl);
+        for (var i = 0; i < rsBlocks.length; i++) { totalDataCount += rsBlocks[i].dataCount; }
+        if (headerBits <= totalDataCount * 8) { chosen = true; break; }
+      }
+      if (!chosen) { throw '内容过长，无法生成二维码'; }
+
+      // 数据位流：模式指示符(0100) + 字符计数 + 字节 + 终止符 + 填充
+      var buffer = QRBitBuffer();
+      buffer.put(4, 4); // Byte 模式
+      buffer.put(bytes.length, lengthBits);
+      for (var i = 0; i < bytes.length; i++) { buffer.put(bytes[i], 8); }
+      var totalDataCount = 0;
+      var rsBlocks = getRSBlocks(typeNumber, ecl);
+      for (var i = 0; i < rsBlocks.length; i++) { totalDataCount += rsBlocks[i].dataCount; }
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) { buffer.put(0, 4); }
+      while (buffer.getLengthInBits() % 8 !== 0) { buffer.putBit(false); }
+      while (true) {
+        if (buffer.getLengthInBits() >= totalDataCount * 8) { break; }
+        buffer.put(PAD0, 8);
+        if (buffer.getLengthInBits() >= totalDataCount * 8) { break; }
+        buffer.put(PAD1, 8);
+      }
+      var data = createBytes(buffer, rsBlocks);
+
+      // 布局
+      var moduleCount = typeNumber * 4 + 17;
+      var modules = [];
+      for (var row = 0; row < moduleCount; row++) {
+        modules[row] = [];
+        for (var col = 0; col < moduleCount; col++) { modules[row][col] = null; }
+      }
+
+      function setupPositionProbePattern(row, col) {
+        for (var r = -1; r <= 7; r++) {
+          if (row + r <= -1 || moduleCount <= row + r) { continue; }
+          for (var c = -1; c <= 7; c++) {
+            if (col + c <= -1 || moduleCount <= col + c) { continue; }
+            if ((0 <= r && r <= 6 && (c === 0 || c === 6)) ||
+                (0 <= c && c <= 6 && (r === 0 || r === 6)) ||
+                (2 <= r && r <= 4 && 2 <= c && c <= 4)) {
+              modules[row + r][col + c] = true;
+            } else {
+              modules[row + r][col + c] = false;
+            }
+          }
+        }
+      }
+      function setupPositionAdjustPattern() {
+        var pos = QRUtil.getPatternPosition(typeNumber);
+        for (var i = 0; i < pos.length; i++) {
+          for (var j = 0; j < pos.length; j++) {
+            var row = pos[i], col = pos[j];
+            if (modules[row][col] !== null) { continue; }
+            for (var r = -2; r <= 2; r++) {
+              for (var c = -2; c <= 2; c++) {
+                if (r === -2 || r === 2 || c === -2 || c === 2 || (r === 0 && c === 0)) {
+                  modules[row + r][col + c] = true;
+                } else {
+                  modules[row + r][col + c] = false;
+                }
+              }
+            }
+          }
+        }
+      }
+      function setupTimingPattern() {
+        for (var r = 8; r < moduleCount - 8; r++) {
+          if (modules[r][6] !== null) { continue; }
+          modules[r][6] = (r % 2 === 0);
+        }
+        for (var c = 8; c < moduleCount - 8; c++) {
+          if (modules[6][c] !== null) { continue; }
+          modules[6][c] = (c % 2 === 0);
+        }
+      }
+      function setupTypeInfo(test, maskPattern) {
+        var eclBit = { L: 1, M: 0, Q: 3, H: 2 }[ecl];
+        var dataBits = (eclBit << 3) | maskPattern;
+        var bits = QRUtil.getBCHTypeInfo(dataBits);
+        for (var i = 0; i < 15; i++) {
+          var mod = (!test && ((bits >> i) & 1) === 1);
+          if (i < 6) { modules[i][8] = mod; }
+          else if (i < 8) { modules[i + 1][8] = mod; }
+          else { modules[moduleCount - 15 + i][8] = mod; }
+        }
+        for (var i = 0; i < 15; i++) {
+          var mod = (!test && ((bits >> i) & 1) === 1);
+          if (i < 8) { modules[8][moduleCount - i - 1] = mod; }
+          else if (i < 9) { modules[8][15 - i - 1 + 1] = mod; }
+          else { modules[8][15 - i - 1] = mod; }
+        }
+        modules[moduleCount - 8][8] = (!test);
+      }
+      function setupTypeNumber(test) {
+        var bits = QRUtil.getBCHTypeNumber(typeNumber);
+        for (var i = 0; i < 18; i++) {
+          var mod = (!test && ((bits >> i) & 1) === 1);
+          modules[Math.floor(i / 3)][i % 3 + moduleCount - 8 - 3] = mod;
+        }
+        for (var i = 0; i < 18; i++) {
+          var mod = (!test && ((bits >> i) & 1) === 1);
+          modules[i % 3 + moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+        }
+      }
+      function mapData(dataBytes, maskPattern) {
+        var inc = -1;
+        var row = moduleCount - 1;
+        var bitIndex = 7;
+        var byteIndex = 0;
+        var maskFunc = QRUtil.getMaskFunction(maskPattern);
+        for (var col = moduleCount - 1; col > 0; col -= 2) {
+          if (col === 6) { col -= 1; }
+          while (true) {
+            for (var c = 0; c < 2; c++) {
+              if (modules[row][col - c] === null) {
+                var dark = false;
+                if (byteIndex < dataBytes.length) {
+                  dark = (((dataBytes[byteIndex] >>> bitIndex) & 1) === 1);
+                }
+                if (maskFunc(row, col - c)) { dark = !dark; }
+                modules[row][col - c] = dark;
+                bitIndex -= 1;
+                if (bitIndex === -1) { byteIndex++; bitIndex = 7; }
+              }
+            }
+            row += inc;
+            if (row < 0 || moduleCount <= row) {
+              row -= inc;
+              inc = -inc;
+              break;
+            }
+          }
+        }
+      }
+      function makeImpl(test, maskPattern) {
+        setupPositionProbePattern(0, 0);
+        setupPositionProbePattern(moduleCount - 7, 0);
+        setupPositionProbePattern(0, moduleCount - 7);
+        setupPositionAdjustPattern();
+        setupTimingPattern();
+        setupTypeInfo(test, maskPattern);
+        if (typeNumber >= 7) { setupTypeNumber(test); }
+        mapData(data, maskPattern);
+      }
+      function getBestMaskPattern() {
+        var minLostPoint = 0, pattern = 0;
+        for (var i = 0; i < 8; i++) {
+          makeImpl(true, i);
+          var lostPoint = QRUtil.getLostPoint(isDark, moduleCount);
+          if (i === 0 || minLostPoint > lostPoint) {
+            minLostPoint = lostPoint;
+            pattern = i;
+          }
+        }
+        return pattern;
+      }
+      function isDark(row, col) { return modules[row][col] === true; }
+
+      makeImpl(false, getBestMaskPattern());
+
+      return {
+        getModuleCount: function () { return moduleCount; },
+        isDark: isDark
+      };
+    }
+    /* ====QR-CORE-END==== */
+
+    /* =====================================================================
+     * HAMA 拼豆色板（标准色）与最近色匹配
+     * ===================================================================== */
+    var HAMA_COLORS = [
+      { code: 'H01', name: 'White',       hex: '#ffffff' },
+      { code: 'H02', name: 'Cream',       hex: '#f7f4d6' },
+      { code: 'H03', name: 'Yellow',      hex: '#f1da1b' },
+      { code: 'H04', name: 'Orange',      hex: '#e56c14' },
+      { code: 'H05', name: 'Red',         hex: '#cb0a0a' },
+      { code: 'H06', name: 'Pink',        hex: '#ffc4ef' },
+      { code: 'H07', name: 'Purple',      hex: '#803db8' },
+      { code: 'H08', name: 'Blue',        hex: '#2e36a6' },
+      { code: 'H09', name: 'Light Blue',  hex: '#4d57dc' },
+      { code: 'H10', name: 'Green',       hex: '#207617' },
+      { code: 'H11', name: 'Light Green', hex: '#8eeab1' },
+      { code: 'H12', name: 'Brown',       hex: '#3f2e10' },
+      { code: 'H17', name: 'Grey',        hex: '#959595' },
+      { code: 'H18', name: 'Black',       hex: '#000000' },
+      { code: 'H20', name: 'Red Brown',   hex: '#a44c2e' },
+      { code: 'H21', name: 'Light Brown', hex: '#b66d31' },
+      { code: 'H22', name: 'Dark Red',    hex: '#850326' },
+      { code: 'H25', name: 'Flesh',       hex: '#f1d2c1' },
+      { code: 'H27', name: 'Beige',       hex: '#eed4aa' },
+      { code: 'H28', name: 'Dark Green',  hex: '#073d07' },
+      { code: 'H29', name: 'Raspberry',   hex: '#b32460' },
+      { code: 'H30', name: 'Burgundy',    hex: '#4f102b' },
+      { code: 'H31', name: 'Turquoise',   hex: '#5d96b0' },
+      { code: 'H32', name: 'Fuchsia',     hex: '#dc91cd' },
+      { code: 'H43', name: 'Pastel Yellow', hex: '#e8f446' },
+      { code: 'H44', name: 'Pastel Coral',  hex: '#fb9b88' },
+      { code: 'H45', name: 'Pastel Purple', hex: '#ab88fb' },
+      { code: 'H46', name: 'Pastel Blue',   hex: '#79c2ff' },
+      { code: 'H47', name: 'Pastel Green',  hex: '#99ff67' },
+      { code: 'H48', name: 'Pastel Pink',   hex: '#d57de2' },
+      { code: 'H60', name: 'Teddybear',     hex: '#edbd39' }
+    ];
+    function hexToRgb(hex) {
+      var h = hex.replace('#', '');
+      if (h.length === 3) { h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; }
+      var n = parseInt(h, 16);
+      return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    }
+    function nearestHama(hex) {
+      var rgb = hexToRgb(hex);
+      var best = HAMA_COLORS[0], bestDist = Infinity;
+      for (var i = 0; i < HAMA_COLORS.length; i++) {
+        var c = hexToRgb(HAMA_COLORS[i].hex);
+        var d = (c.r - rgb.r) * (c.r - rgb.r) + (c.g - rgb.g) * (c.g - rgb.g) + (c.b - rgb.b) * (c.b - rgb.b);
+        if (d < bestDist) { bestDist = d; best = HAMA_COLORS[i]; }
+      }
+      return best;
+    }
+
+    /* =====================================================================
+     * 页面状态与 UI 逻辑
+     * ===================================================================== */
+    var state = {
+      type: 'text',
+      ecl: 'H',
+      fg: '#111111',
+      bg: '#ffffff',
+      logoDataUrl: null,
+      logoImg: null,
+      imageDataUrl: null,
+      view: 'qr',
+      qr: null,          // 当前二维码对象
+      content: '',       // 实际编码内容
+      beadCells: null    // 拼豆图纸数据 [{r,c,color}]
+    };
+
+    var $ = function (id) { return document.getElementById(id); };
+    var MARGIN = 4;          // 二维码白边（模块数）
+    var QR_SCALE = 12;       // 二维码渲染像素/模块
+
+    function showMsg(text, type) {
+      var m = $('msg');
+      m.textContent = text;
+      m.className = 'msg show ' + (type || '');
+      if (type === 'ok') { setTimeout(function () { m.className = 'msg'; }, 4000); }
+    }
+    function clearMsg() { $('msg').className = 'msg'; }
+
+    // 类型切换
+    function setType(type) {
+      state.type = type;
+      document.querySelectorAll('#type-tabs .tab').forEach(function (t) {
+        t.classList.toggle('active', t.dataset.type === type);
+      });
+      $('pane-text').classList.toggle('hidden', type !== 'text');
+      $('pane-wifi').classList.toggle('hidden', type !== 'wifi');
+      $('pane-image').classList.toggle('hidden', type !== 'image');
+      generate();
+    }
+    $('type-tabs').addEventListener('click', function (e) {
+      var tab = e.target.closest('.tab');
+      if (tab) { setType(tab.dataset.type); }
+    });
+
+    // 视图切换
+    function setView(view) {
+      state.view = view;
+      document.querySelectorAll('#view-tabs .view-tab').forEach(function (t) {
+        t.classList.toggle('active', t.dataset.view === view);
+      });
+      $('stage-qr').classList.toggle('hidden', view !== 'qr');
+      $('stage-bead').classList.toggle('hidden', view !== 'bead');
+    }
+    $('view-tabs').addEventListener('click', function (e) {
+      var btn = e.target.closest('.view-tab');
+      if (btn) { setView(btn.dataset.view); }
+    });
+
+    // 纠错级别
+    $('ecl-group').addEventListener('click', function (e) {
+      var btn = e.target.closest('.ecl-btn');
+      if (!btn) { return; }
+      document.querySelectorAll('#ecl-group .ecl-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.ecl = btn.dataset.ecl;
+      generate();
+    });
+
+    // 颜色
+    function bindColor(inputId, hexId, key) {
+      $(inputId).addEventListener('input', function () {
+        state[key] = this.value;
+        $(hexId).textContent = this.value.toUpperCase();
+        generate();
+      });
+    }
+    bindColor('fg-color', 'fg-hex', 'fg');
+    bindColor('bg-color', 'bg-hex', 'bg');
+
+    // WiFi 转义
+    function wifiEscape(s) { return String(s).replace(/([\\;,:"])/g, '\\$1'); }
+
+    // 构造内容
+    function buildContent() {
+      if (state.type === 'text') {
+        return $('text-input').value;
+      }
+      if (state.type === 'wifi') {
+        var ssid = $('wifi-ssid').value;
+        if (!ssid.trim()) { throw '请填写 WiFi 名称'; }
+        var auth = $('wifi-auth').value;
+        var pwd = $('wifi-pwd').value;
+        var hidden = $('wifi-hidden').value;
+        var s = 'WIFI:T:' + auth + ';S:' + wifiEscape(ssid) + ';';
+        if (auth !== 'nopass') { s += 'P:' + wifiEscape(pwd) + ';'; }
+        s += 'H:' + hidden + ';;';
+        return s;
+      }
+      if (state.type === 'image') {
+        if (state.imageDataUrl) { return state.imageDataUrl; }
+        var url = $('image-url').value;
+        if (!url.trim()) { throw '请填写图片链接或上传图片'; }
+        return url;
+      }
+      return '';
+    }
+
+    // 文件读取
+    function readFileAsDataUrl(file, cb) {
+      var reader = new FileReader();
+      reader.onload = function () { cb(reader.result); };
+      reader.readAsDataURL(file);
+    }
+    function loadImage(src, cb) {
+      var img = new Image();
+      img.onload = function () { cb(img); };
+      img.onerror = function () { cb(null); };
+      img.src = src;
+    }
+
+    // Logo 上传
+    $('logo-file').addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file) { return; }
+      readFileAsDataUrl(file, function (dataUrl) {
+        state.logoDataUrl = dataUrl;
+        loadImage(dataUrl, function (img) {
+          if (img) {
+            state.logoImg = img;
+            $('logo-preview').src = dataUrl;
+            $('logo-preview').classList.remove('hidden');
+            $('logo-clear').classList.remove('hidden');
+            generate();
+          } else {
+            showMsg('Logo 图片无法加载，请换一张', 'err');
+          }
+        });
+      });
+    });
+    $('logo-clear').addEventListener('click', function () {
+      state.logoDataUrl = null;
+      state.logoImg = null;
+      $('logo-preview').classList.add('hidden');
+      $('logo-clear').classList.add('hidden');
+      $('logo-file').value = '';
+      generate();
+    });
+
+    // 图片上传
+    $('image-file').addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file) { return; }
+      readFileAsDataUrl(file, function (dataUrl) {
+        var approx = Math.round((dataUrl.length - 22) * 3 / 4); // 估算字节数
+        if (approx > 1000) {
+          $('image-file').value = '';
+          showMsg('图片约 ' + approx + ' 字节，超出二维码可容纳容量（约 1KB）。请先把图片上传到图床，再粘贴图片链接生成。', 'err');
+          return;
+        }
+        state.imageDataUrl = dataUrl;
+        $('image-preview').src = dataUrl;
+        $('image-preview').classList.remove('hidden');
+        $('image-clear').classList.remove('hidden');
+        generate();
+      });
+    });
+    $('image-clear').addEventListener('click', function () {
+      state.imageDataUrl = null;
+      $('image-preview').classList.add('hidden');
+      $('image-clear').classList.add('hidden');
+      $('image-file').value = '';
+      generate();
+    });
+
+    // 示例
+    $('sample-url').addEventListener('click', function () {
+      $('text-input').value = 'http://moyouqian.top/';
+      generate();
+    });
+    $('sample-img').addEventListener('click', function () {
+      $('image-url').value = 'https://avatars.githubusercontent.com/zhamao114514';
+      generate();
+    });
+
+    // 输入自动重生成
+    ['text-input', 'wifi-ssid', 'wifi-pwd', 'image-url'].forEach(function (id) {
+      $(id).addEventListener('input', function () { generate(); });
+    });
+    ['wifi-auth', 'wifi-hidden'].forEach(function (id) {
+      $(id).addEventListener('change', function () { generate(); });
+    });
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    // 绘制二维码 canvas（含背景色 margin 与中心 Logo）
+    function drawQR() {
+      var qr = state.qr;
+      var n = qr.getModuleCount();
+      var size = (n + MARGIN * 2) * QR_SCALE;
+      var canvas = $('qr-canvas');
+      canvas.width = size;
+      canvas.height = size;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = state.bg;
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = state.fg;
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          if (qr.isDark(r, c)) {
+            ctx.fillRect((c + MARGIN) * QR_SCALE, (r + MARGIN) * QR_SCALE, QR_SCALE, QR_SCALE);
+          }
+        }
+      }
+      // 中心 Logo
+      if (state.logoImg) {
+        var logoSize = size * 0.22;
+        var lx = (size - logoSize) / 2;
+        var ly = (size - logoSize) / 2;
+        var pad = logoSize * 0.12;
+        ctx.fillStyle = '#ffffff';
+        roundRect(ctx, lx - pad, ly - pad, logoSize + pad * 2, logoSize + pad * 2, pad * 2);
+        ctx.fill();
+        ctx.drawImage(state.logoImg, lx, ly, logoSize, logoSize);
+      }
+    }
+
+    // 拼豆图纸：映射到 HAMA 色板并绘制
+    function drawBead() {
+      var qr = state.qr;
+      var n = qr.getModuleCount();
+      var fgBead = nearestHama(state.fg);
+      var bgBead = nearestHama(state.bg);
+      var cells = [];
+      var fgCount = 0, bgCount = 0;
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          var dark = qr.isDark(r, c);
+          var bead = dark ? fgBead : bgBead;
+          cells.push({ r: r, c: c, bead: bead });
+          if (dark) { fgCount++; } else { bgCount++; }
+        }
+      }
+      state.beadCells = cells;
+
+      var cell = 14; // 每颗豆像素
+      var grid = cell + 1; // 含格线
+      var legendH = 84;
+      var canvas = $('bead-canvas');
+      canvas.width = n * grid + 1;
+      canvas.height = n * grid + 1 + legendH;
+      var ctx = canvas.getContext('2d');
+      // 底
+      ctx.fillStyle = '#f3f3f3';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // 豆
+      for (var i = 0; i < cells.length; i++) {
+        var cl = cells[i];
+        ctx.fillStyle = cl.bead.hex;
+        ctx.fillRect(cl.c * grid, cl.r * grid, cell, cell);
+      }
+      // 格线
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var g = 0; g <= n; g++) {
+        var p = g * grid + 0.5;
+        ctx.moveTo(p, 0.5);
+        ctx.lineTo(p, n * grid + 0.5);
+        ctx.moveTo(0.5, p);
+        ctx.lineTo(n * grid + 0.5, p);
+      }
+      ctx.stroke();
+      // 图例
+      var legendY = n * grid + 20;
+      ctx.font = '13px sans-serif';
+      var sw = 22;
+      var items = [{ bead: fgBead, count: fgCount, label: '前景' }, { bead: bgBead, count: bgCount, label: '背景' }];
+      var x = 14;
+      ctx.textBaseline = 'middle';
+      items.forEach(function (it) {
+        ctx.fillStyle = it.bead.hex;
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, legendY - 4, sw, sw);
+        ctx.fillRect(x, legendY - 4, sw, sw);
+        x += sw + 8;
+        ctx.fillStyle = '#222';
+        ctx.fillText(it.bead.code + ' ' + it.bead.name, x, legendY + 7);
+        ctx.fillText('×' + it.count, x + 150, legendY + 7);
+        ctx.fillStyle = '#666';
+        ctx.fillText(it.label, x + 210, legendY + 7);
+        x += 250;
+      });
+      // 页面图例
+      var legend = $('bead-legend');
+      legend.innerHTML = '';
+      items.forEach(function (it) {
+        var div = document.createElement('div');
+        div.className = 'legend-item';
+        div.innerHTML = '<span class="sw" style="background:' + it.bead.hex + '"></span>' +
+          '<span class="code">' + it.bead.code + '</span>' +
+          '<span class="name">' + it.bead.name + '（' + it.label + '）</span>' +
+          '<span class="cnt">×' + it.count + ' 颗</span>';
+        legend.appendChild(div);
+      });
+    }
+
+    // 生成主流程
+    function generate() {
+      clearMsg();
+      var content;
+      try {
+        content = buildContent();
+      } catch (err) {
+        resetResult();
+        $('stage-empty').classList.remove('hidden');
+        $('stage-empty').textContent = err.message;
+        return;
+      }
+      if (!content) {
+        resetResult();
+        $('stage-empty').classList.remove('hidden');
+        $('stage-empty').textContent = '在左侧输入内容后点击「生成二维码」';
+        return;
+      }
+      try {
+        state.qr = makeQRCode(content, state.ecl);
+      } catch (err) {
+        resetResult();
+        $('stage-empty').classList.remove('hidden');
+        $('stage-empty').textContent = String(err.message || err);
+        showMsg('内容过长，请缩短文字或改用更低的纠错级别', 'err');
+        return;
+      }
+      state.content = content;
+      // 渲染
+      $('stage-empty').classList.add('hidden');
+      $('stage-qr').classList.remove('hidden');
+      drawQR();
+      drawBead();
+      // 信息
+      var n = state.qr.getModuleCount();
+      var version = (n - 17) / 4;
+      var byteLen = new TextEncoder().encode(content).length;
+      $('info-version').textContent = version;
+      $('info-modules').textContent = n + '×' + n;
+      $('info-length').textContent = byteLen + ' B';
+      $('info-ecl').textContent = state.ecl;
+      $('info').classList.remove('hidden');
+      $('dl-qr').disabled = false;
+      $('dl-bead').disabled = false;
+    }
+
+    function resetResult() {
+      state.qr = null;
+      $('stage-qr').classList.add('hidden');
+      $('stage-bead').classList.add('hidden');
+      $('stage-empty').classList.remove('hidden');
+      $('info').classList.add('hidden');
+      $('dl-qr').disabled = true;
+      $('dl-bead').disabled = true;
+    }
+
+    // 下载
+    function downloadCanvas(canvas, filename) {
+      var a = document.createElement('a');
+      a.download = filename;
+      a.href = canvas.toDataURL('image/png');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    $('dl-qr').addEventListener('click', function () {
+      if (!state.qr) { return; }
+      downloadCanvas($('qr-canvas'), 'qrcode.png');
+      showMsg('二维码原图已下载', 'ok');
+    });
+    $('dl-bead').addEventListener('click', function () {
+      if (!state.qr) { return; }
+      downloadCanvas($('bead-canvas'), 'qrcode-beads.png');
+      showMsg('拼豆图纸已下载', 'ok');
+    });
+    $('gen-btn').addEventListener('click', function () { generate(); });
+
+    // 初始生成（文本示例）
+    $('text-input').value = 'http://moyouqian.top/';
+    generate();
+  </script>
+</body>
+</html>

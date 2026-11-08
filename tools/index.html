@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>工具箱 - 沫友乾的个人站</title>
+  <style>
+    /* ── 设计令牌（与首页保持一致）──────────────────────────── */
+    :root {
+      --bg:            #08080a;
+      --surface:       rgba(255, 255, 255, 0.022);
+      --surface-hover: rgba(255, 255, 255, 0.045);
+      --fill:          rgba(255, 255, 255, 0.05);
+      --line:          rgba(255, 255, 255, 0.075);
+      --line-strong:   rgba(255, 255, 255, 0.17);
+      --text:          #f0f0f2;
+      --muted:         #8a8a93;
+      --faint:         #5a5a63;
+      --live:          #3ddc84;
+      --ease:          cubic-bezier(.22, .8, .24, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                   "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      letter-spacing: .01em;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      padding: 40px 28px 56px;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(60rem 32rem at 50% -12%, rgba(150, 165, 200, .10), transparent 62%),
+        radial-gradient(38rem 22rem at 88% 4%,  rgba(120, 140, 190, .05), transparent 60%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 9;
+      pointer-events: none;
+      opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::selection { background: rgba(255, 255, 255, .16); }
+
+    a { color: inherit; text-decoration: none; }
+
+    :focus-visible {
+      outline: 1px solid var(--line-strong);
+      outline-offset: 3px;
+      border-radius: 10px;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: min(1020px, 100%);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 96px);
+    }
+
+    /* ── 顶栏 ──────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: .95rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+    }
+
+    .brand .mark {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 0 4px rgba(61, 220, 132, .10);
+      animation: breathe 3.2s var(--ease) infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: .55; }
+      50%      { opacity: 1; }
+    }
+
+    .brand .slash { color: var(--faint); font-weight: 400; }
+    .brand .mark-sub { color: var(--muted); font-weight: 400; }
+
+    .nav-links { display: flex; gap: 26px; }
+
+    .nav-links a {
+      position: relative;
+      font-size: .88rem;
+      color: var(--muted);
+      transition: color .25s var(--ease);
+    }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -4px;
+      width: 100%;
+      height: 1px;
+      background: currentColor;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .3s var(--ease);
+    }
+
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+    .nav-links a.active { color: var(--text); }
+    .nav-links a.active::after { transform: scaleX(1); }
+
+    /* ── 标题区 ────────────────────────────────────────────── */
+    .hero { padding: 72px 0 40px; }
+
+    .eyebrow {
+      font-size: .72rem;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 12px;
+    }
+
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.9rem, 4.6vw, 2.4rem);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 52ch;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    /* ── 搜索框 ────────────────────────────────────────────── */
+    .search-box { position: relative; margin-bottom: 18px; }
+
+    .search-box input {
+      width: 100%;
+      padding: 14px 18px 14px 46px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--text);
+      font: inherit;
+      font-size: .95rem;
+      outline: none;
+      transition: border-color .25s var(--ease), background .25s var(--ease);
+    }
+
+    .search-box input::placeholder { color: var(--faint); }
+    .search-box input:focus { border-color: var(--line-strong); background: var(--surface-hover); }
+
+    .search-box .ico {
+      position: absolute;
+      left: 17px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: grid;
+      place-items: center;
+      color: var(--faint);
+      pointer-events: none;
+    }
+
+    .search-box .ico svg { width: 17px; height: 17px; }
+
+    /* ── 分类标签 ──────────────────────────────────────────── */
+    .categories {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+
+    .cat-btn {
+      padding: 7px 16px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font: inherit;
+      font-size: .84rem;
+      cursor: pointer;
+      transition: color .25s var(--ease), border-color .25s var(--ease),
+                  background .25s var(--ease);
+    }
+
+    .cat-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    .cat-btn.active {
+      background: var(--fill);
+      border-color: var(--line-strong);
+      color: var(--text);
+    }
+
+    /* ── 工具卡片 ──────────────────────────────────────────── */
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .tool-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 22px 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      transition: background .3s var(--ease), border-color .3s var(--ease),
+                  transform .3s var(--ease);
+    }
+
+    .tool-card:hover {
+      background: var(--surface-hover);
+      border-color: var(--line-strong);
+      transform: translateY(-2px);
+    }
+
+    .tool-card .ico {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      transition: color .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .tool-card .ico svg { width: 19px; height: 19px; }
+    .tool-card:hover .ico { color: var(--text); border-color: var(--line-strong); }
+
+    .tool-card .name { font-size: 1rem; font-weight: 600; letter-spacing: .01em; }
+
+    .tool-card .desc {
+      flex: 1;
+      color: var(--muted);
+      font-size: .85rem;
+      line-height: 1.6;
+    }
+
+    .tool-card .tag {
+      align-self: flex-start;
+      padding: 2px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: .72rem;
+      letter-spacing: .08em;
+      color: var(--faint);
+    }
+
+    .tool-card.disabled {
+      opacity: .4;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .empty {
+      display: none;
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--faint);
+      font-size: .95rem;
+    }
+
+    /* ── 页脚 ──────────────────────────────────────────────── */
+    footer {
+      margin-top: auto;
+      padding-top: 40px;
+      font-size: .78rem;
+      color: var(--faint);
+    }
+
+    /* ── 入场动画 ──────────────────────────────────────────── */
+    .rise {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: rise .8s var(--ease) forwards;
+    }
+    .d1 { animation-delay: .05s; }
+    .d2 { animation-delay: .13s; }
+    .d3 { animation-delay: .20s; }
+
+    @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ── 响应式 ────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      body { padding: 28px 20px 40px; }
+      .hero { padding: 48px 0 32px; }
+      .nav-links { gap: 18px; }
+      .tool-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001s !important;
+      }
+      .rise { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar rise">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>沫友乾</span>
+        <span class="slash">/</span>
+        <span class="mark-sub">工具箱</span>
+      </div>
+      <nav class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../blog">博客</a>
+        <a href="./index.html" class="active">工具箱</a>
+      </nav>
+    </header>
+
+    <section class="hero rise d1">
+      <div class="eyebrow">Toolbox</div>
+      <h1>在线工具箱</h1>
+      <p>收集常用的小工具，纯前端运行，数据不上传</p>
+    </section>
+
+    <div class="search-box rise d2">
+      <span class="ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>
+        </svg>
+      </span>
+      <input type="text" id="search-input" placeholder="搜索工具名称或描述…">
+    </div>
+
+    <div class="categories rise d2" id="categories">
+      <button class="cat-btn active" data-cat="all">全部</button>
+      <button class="cat-btn" data-cat="效率">效率工具</button>
+      <button class="cat-btn" data-cat="vue">Vue 应用</button>
+    </div>
+
+    <!-- ====== 工具卡片：静态直接写在 HTML 里，百度蜘蛛无需执行 JS 即可看到全部链接和文字 ====== -->
+    <main class="tool-grid rise d3" id="tool-grid">
+      <a class="tool-card" href="pomodoro/index.html"
+         data-cat="效率" data-name="番茄钟"
+         data-desc="专注计时，支持自定义工作与休息时长">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="13.5" r="7.5"/><path d="M12 10v3.5l2.5 1.5"/><path d="M9 2.5h6"/>
+          </svg>
+        </span>
+        <span class="name">番茄钟</span>
+        <span class="desc">专注计时，支持自定义工作与休息时长</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <a class="tool-card" href="qrcode/index.html"
+         data-cat="效率" data-name="二维码生成器"
+         data-desc="生成文本、WiFi 二维码，支持换色、加 Logo">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5"/>
+            <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5"/>
+            <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5"/>
+            <path d="M14 14h3v3h-3zM20.5 14v3M17.5 20.5h3M14 20.5h.01"/>
+          </svg>
+        </span>
+        <span class="name">二维码生成器</span>
+        <span class="desc">生成文本、WiFi 二维码，支持换色、加 Logo</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <a class="tool-card" href="text-screen/index.html"
+         data-cat="效率" data-name="全屏文字展示器"
+         data-desc="静态/水平/垂直滚动文字全屏展示，提词应援弹幕，支持调速、描边发光与屏幕常亮">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2.5" y="4" width="19" height="13" rx="2"/>
+            <path d="M9 20.5h6M12 17v3.5"/>
+          </svg>
+        </span>
+        <span class="name">全屏文字展示器</span>
+        <span class="desc">静态/水平/垂直滚动文字全屏展示，提词应援弹幕，支持调速、描边发光与屏幕常亮</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <a class="tool-card" href="video-rotate/index.html"
+         data-cat="效率" data-name="视频旋转"
+         data-desc="旋转视频方向，原画质无损保存，不裁切不压缩，界面简单适合长辈">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="12.5" height="12" rx="2.5"/>
+            <path d="m15.5 12 5.5-3.5v11L15.5 16z"/>
+          </svg>
+        </span>
+        <span class="name">视频旋转</span>
+        <span class="desc">旋转视频方向，原画质无损保存，不裁切不压缩，界面简单适合长辈</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <a class="tool-card" href="video-to-gif/index.html"
+         data-cat="效率" data-name="视频转 GIF"
+         data-desc="截取视频片段转成 GIF 动图，可调时长、宽度、帧率与颜色数，纯本地处理">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="5" width="20" height="14" rx="3"/>
+            <path d="M10 9.5v5M15 10.5v3M15 10.5h.01M18.5 10v1.8M18.5 14v.01"/>
+          </svg>
+        </span>
+        <span class="name">视频转 GIF</span>
+        <span class="desc">截取视频片段转成 GIF 动图，可调时长、宽度、帧率与颜色数，纯本地处理</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <a class="tool-card" href="pdf-merge/index.html"
+         data-cat="效率" data-name="PDF 合并"
+         data-desc="把多个 PDF 按顺序合并成一个文件，支持拖拽排序，纯本地处理不上传">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3.5h6l4 4v13h-10z"/>
+            <path d="M14 3.5v4h4"/>
+            <path d="M11 12v4.5M11 12H15.5M11 14.5H14"/>
+            <path d="M12.5 12v4.5"/>
+            <path d="M4 8.5v11h8"/>
+            <path d="M6 11.5H9M6 14h6.5"/>
+          </svg>
+        </span>
+        <span class="name">PDF 合并</span>
+        <span class="desc">把多个 PDF 按顺序合并成一个文件，支持拖拽排序，纯本地处理不上传</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <a class="tool-card" href="nav/index.html"
+         data-cat="效率" data-name="网站导航"
+         data-desc="一键直达沫友乾的文件快递柜与私人网盘">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>
+          </svg>
+        </span>
+        <span class="name">网站导航</span>
+        <span class="desc">一键直达沫友乾的文件快递柜与私人网盘</span>
+        <span class="tag">效率</span>
+      </a>
+
+      <!-- Vue 工具集线上尚未构建（地址 404），暂时不挂链接，等 npm run build 上线后再改回 <a> -->
+      <div class="tool-card disabled"
+           data-cat="vue" data-name="Vue 工具集"
+           data-desc="基于 Vue 3 的复杂交互工具（需先构建）">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2.5 5 13h5l-1 8.5L17 11h-5z"/>
+          </svg>
+        </span>
+        <span class="name">Vue 工具集</span>
+        <span class="desc">基于 Vue 3 的复杂交互工具（需先构建）</span>
+        <span class="tag">Vue</span>
+      </div>
+
+      <div class="tool-card disabled"
+           data-cat="vue" data-name="更多工具"
+           data-desc="敬请期待，持续更新中…">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </span>
+        <span class="name">更多工具</span>
+        <span class="desc">敬请期待，持续更新中…</span>
+        <span class="tag">Vue</span>
+      </div>
+    </main>
+
+    <div class="empty" id="empty">没有找到匹配的工具</div>
+
+    <footer>© <span id="year">2026</span> 沫友乾 · 纯静态 · 无需构建</footer>
+  </div>
+
+  <script>
+    // 卡片已在 HTML 中静态写好，JS 只负责“搜索 + 分类”的显隐过滤，不再生成卡片
+    const grid = document.getElementById('tool-grid');
+    const searchInput = document.getElementById('search-input');
+    const emptyEl = document.getElementById('empty');
+    const catContainer = document.getElementById('categories');
+    let currentCat = 'all';
+    let currentKeyword = '';
+
+    function render() {
+      const kw = currentKeyword.toLowerCase().trim();
+      let visibleCount = 0;
+
+      grid.querySelectorAll('.tool-card').forEach((card) => {
+        const matchCat = currentCat === 'all' || card.dataset.cat === currentCat;
+        const name = (card.dataset.name || '').toLowerCase();
+        const desc = (card.dataset.desc || '').toLowerCase();
+        const matchKw = !kw || name.includes(kw) || desc.includes(kw);
+        const show = matchCat && matchKw;
+
+        card.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+      });
+
+      emptyEl.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+
+    searchInput.addEventListener('input', (e) => {
+      currentKeyword = e.target.value;
+      render();
+    });
+
+    catContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.cat-btn');
+      if (!btn) return;
+      catContainer.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentCat = btn.dataset.cat;
+      render();
+    });
+
+    render();
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

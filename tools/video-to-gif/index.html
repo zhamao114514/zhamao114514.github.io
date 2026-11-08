@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="把视频截取一段转成 GIF 动图，支持画面裁剪、循环次数、倍速、宽度、帧率与颜色数设置，纯本地处理不上传">
+  <title>视频转 GIF - 沫友乾的个人站</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='5' width='20' height='14' rx='3' fill='%2308080a' stroke='%233ddc84' stroke-width='1.6'/%3E%3Ctext x='6' y='16.5' font-family='Arial' font-size='8' font-weight='700' fill='%233ddc84'%3EGIF%3C/text%3E%3C/svg%3E">
+  <style>
+    /* ── 设计令牌（与首页 / 工具箱同一套）──────────────────── */
+    :root {
+      --bg:            #08080a;
+      --surface:       rgba(255, 255, 255, 0.022);
+      --surface-hover: rgba(255, 255, 255, 0.045);
+      --fill:          rgba(255, 255, 255, 0.05);
+      --line:          rgba(255, 255, 255, 0.075);
+      --line-strong:   rgba(255, 255, 255, 0.17);
+      --text:          #f0f0f2;
+      --muted:         #8a8a93;
+      --faint:         #5a5a63;
+      --live:          #3ddc84;
+      --warn:          #e0b64c;
+      --ease:          cubic-bezier(.22, .8, .24, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                   "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      letter-spacing: .01em;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      padding: 40px 28px 56px;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(60rem 32rem at 50% -12%, rgba(150, 165, 200, .10), transparent 62%),
+        radial-gradient(38rem 22rem at 88% 4%,  rgba(120, 140, 190, .05), transparent 60%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 9;
+      pointer-events: none;
+      opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::selection { background: rgba(255, 255, 255, .16); }
+
+    a { color: inherit; text-decoration: none; }
+
+    :focus-visible {
+      outline: 1px solid var(--line-strong);
+      outline-offset: 3px;
+      border-radius: 10px;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: min(880px, 100%);
+      margin: 0 auto;
+    }
+
+    /* ── 顶栏 ──────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 22px;
+      margin-bottom: 46px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: .95rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+    }
+
+    .brand .mark {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 0 4px rgba(61, 220, 132, .10);
+      animation: breathe 3.2s var(--ease) infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: .55; }
+      50%      { opacity: 1; }
+    }
+
+    .brand .slash { color: var(--faint); font-weight: 400; }
+    .brand .mark-sub { color: var(--muted); font-weight: 400; }
+
+    .nav-links { display: flex; gap: 26px; }
+
+    .nav-links a {
+      position: relative;
+      font-size: .88rem;
+      color: var(--muted);
+      transition: color .25s var(--ease);
+    }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -4px;
+      width: 100%;
+      height: 1px;
+      background: currentColor;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .3s var(--ease);
+    }
+
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+    .nav-links a.active { color: var(--text); }
+    .nav-links a.active::after { transform: scaleX(1); }
+
+    /* ── 页头 ──────────────────────────────────────────────── */
+    .page-head { margin-bottom: 24px; }
+
+    .eyebrow {
+      font-size: .72rem;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 10px;
+    }
+
+    .page-head h1 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 10px;
+      font-size: clamp(1.6rem, 4vw, 2rem);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      line-height: 1.2;
+    }
+
+    .page-head h1 svg { width: 22px; height: 22px; flex: none; color: var(--muted); }
+    .page-head p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+    /* ── 卡片 / 面板 ───────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      transition: background .3s var(--ease), border-color .3s var(--ease),
+                  transform .3s var(--ease);
+    }
+
+    .card:hover {
+      background: var(--surface-hover);
+      border-color: var(--line-strong);
+      transform: translateY(-2px);
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── 分区小标题 ────────────────────────────────────────── */
+    .step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+
+    #step-edit .step-head, #step-result .step-head {
+      margin-top: 22px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .step-num {
+      flex: none;
+      display: grid;
+      place-items: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--faint);
+      font-size: .72rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .step-title {
+      font-size: .72rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+
+    /* ── 选择视频（主按钮 / 虚线投放区）────────────────────── */
+    .pick-btn {
+      display: block;
+      width: 100%;
+      padding: 30px 20px;
+      font: inherit;
+      font-size: .95rem;
+      font-weight: 500;
+      color: var(--text);
+      text-align: center;
+      background: var(--fill);
+      border: 1px dashed var(--line-strong);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .pick-btn:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .32); }
+    .pick-btn svg { width: 19px; height: 19px; vertical-align: -4px; margin-right: 8px; color: var(--muted); }
+    .pick-btn .sub { display: block; margin-top: 10px; font-size: .82rem; font-weight: 400; color: var(--faint); }
+
+    /* ── 换一个视频（次按钮）───────────────────────────────── */
+    .change-btn, .crop-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      font: inherit;
+      font-size: .84rem;
+      font-weight: 500;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease);
+    }
+
+    .change-btn:hover, .crop-toggle-btn:hover { color: var(--text); border-color: var(--line-strong); }
+    .change-btn svg, .crop-toggle-btn svg { width: 17px; height: 17px; flex: none; }
+
+    .crop-toggle-btn.on {
+      color: var(--text);
+      background: var(--fill);
+      border-color: var(--live);
+    }
+
+    /* ── 预览区 ────────────────────────────────────────────── */
+    .stage {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: min(72vw, 54vh, 480px);
+      background: #000;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .stage video {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      background: #000;
+      cursor: pointer;
+    }
+
+    /* ── 裁剪框 ────────────────────────────────────────────── */
+    .crop-tools {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+
+    .crop-tools .crop-info { font-size: .82rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+    .crop-tools .reset-btn {
+      padding: 4px 12px;
+      font: inherit;
+      font-size: .78rem;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: color .25s var(--ease), border-color .25s var(--ease);
+    }
+
+    .crop-tools .reset-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    .crop-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .crop-box {
+      position: absolute;
+      border: 1.5px solid var(--live);
+      background: rgba(61, 220, 132, .05);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55);
+      pointer-events: auto;
+      touch-action: none;
+      cursor: move;
+    }
+
+    .crop-box .h {
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      background: var(--bg);
+      border: 1.5px solid var(--live);
+      border-radius: 3px;
+      pointer-events: auto;
+    }
+
+    .crop-box .h.nw { left: -5.5px; top: -5.5px; cursor: nwse-resize; }
+    .crop-box .h.n  { left: 50%; top: -5.5px; margin-left: -5.5px; cursor: ns-resize; }
+    .crop-box .h.ne { right: -5.5px; top: -5.5px; cursor: nesw-resize; }
+    .crop-box .h.e  { right: -5.5px; top: 50%; margin-top: -5.5px; cursor: ew-resize; }
+    .crop-box .h.se { right: -5.5px; bottom: -5.5px; cursor: nwse-resize; }
+    .crop-box .h.s  { left: 50%; bottom: -5.5px; margin-left: -5.5px; cursor: ns-resize; }
+    .crop-box .h.sw { left: -5.5px; bottom: -5.5px; cursor: nesw-resize; }
+    .crop-box .h.w  { left: -5.5px; top: 50%; margin-top: -5.5px; cursor: ew-resize; }
+
+    /* 转换中的遮罩层：盖住预览与裁剪框 */
+    .stage-cover {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: rgba(8, 8, 10, .82);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+      z-index: 2;
+    }
+
+    .stage-cover .pct { font-size: .86rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    /* ── 参数面板 ──────────────────────────────────────────── */
+    .params-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px 26px;
+      margin-bottom: 4px;
+    }
+
+    .params-grid .span-row { grid-column: 1 / -1; }
+
+    .param-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      font-size: .86rem;
+      color: var(--muted);
+    }
+
+    .param-label .val {
+      color: var(--text);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .param-sub { margin-top: 6px; font-size: .78rem; color: var(--faint); line-height: 1.5; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--text);
+      border: 1px solid var(--line-strong);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, .05);
+      transition: background .2s var(--ease), box-shadow .2s var(--ease);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover { background: var(--live); box-shadow: 0 0 0 5px rgba(61, 220, 132, .14); }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--text);
+      border: 1px solid var(--line-strong);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, .05);
+      transition: background .2s var(--ease), box-shadow .2s var(--ease);
+    }
+
+    input[type="range"]::-moz-range-thumb:hover { background: var(--live); box-shadow: 0 0 0 5px rgba(61, 220, 132, .14); }
+
+    /* 分段按钮 */
+    .seg {
+      display: flex;
+      gap: 8px;
+    }
+
+    .seg-btn {
+      flex: 1;
+      padding: 10px 0;
+      font: inherit;
+      font-size: .86rem;
+      font-weight: 500;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color .25s var(--ease), border-color .25s var(--ease), background .25s var(--ease);
+    }
+
+    .seg-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    .seg-btn.active {
+      color: var(--text);
+      background: var(--fill);
+      border-color: var(--line-strong);
+    }
+
+    /* ── 转换区 ────────────────────────────────────────────── */
+    .est-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: .82rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .est-line .est-left { display: flex; flex-direction: column; gap: 4px; }
+
+    .est-line .est-warn { color: var(--warn); }
+
+    .est-line .size-info { color: var(--muted); }
+    .est-line .size-info .big { color: var(--text); font-weight: 600; }
+
+    .run-btn {
+      display: block;
+      width: 100%;
+      margin-top: 14px;
+      padding: 13px 20px;
+      font: inherit;
+      font-size: .98rem;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--fill);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .run-btn:hover { background: rgba(255, 255, 255, .09); }
+    .run-btn:disabled { opacity: .5; cursor: wait; }
+
+    .progress-row { margin-top: 14px; }
+
+    .progress {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+
+    .progress .fill {
+      height: 100%;
+      width: 0%;
+      background: var(--live);
+      border-radius: 999px;
+      transition: width .18s linear;
+    }
+
+    .progress-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      font-size: .82rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cancel-btn {
+      padding: 4px 14px;
+      font: inherit;
+      font-size: .8rem;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: color .25s var(--ease), border-color .25s var(--ease);
+    }
+
+    .cancel-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    .hint { margin-top: 12px; color: var(--faint); font-size: .82rem; line-height: 1.6; }
+
+    /* ── 结果区 ────────────────────────────────────────────── */
+    .result-info {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 18px;
+      margin: 4px 0 14px;
+      color: var(--muted);
+      font-size: .86rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .result-info .big { color: var(--text); font-weight: 600; }
+
+    .result-actions { display: flex; gap: 12px; }
+
+    .save-btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      font: inherit;
+      font-size: .98rem;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--fill);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .save-btn:hover { background: rgba(255, 255, 255, .09); }
+
+    .again-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      font: inherit;
+      font-size: .9rem;
+      font-weight: 500;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: color .3s var(--ease), border-color .3s var(--ease);
+    }
+
+    .again-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    /* ── 提示条 ────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 34px;
+      transform: translateX(-50%) translateY(20px);
+      padding: 12px 20px;
+      background: rgba(18, 18, 22, .94);
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--text);
+      font-size: .85rem;
+      max-width: 90vw;
+      opacity: 0;
+      pointer-events: none;
+      text-align: center;
+      transition: opacity .25s var(--ease), transform .25s var(--ease);
+      z-index: 99;
+    }
+
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── 入场动画 ──────────────────────────────────────────── */
+    .rise {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: rise .8s var(--ease) forwards;
+    }
+    .d1 { animation-delay: .05s; }
+    .d2 { animation-delay: .13s; }
+
+    @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ── 响应式 ────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      body { padding: 28px 20px 40px; }
+      .topbar { margin-bottom: 34px; }
+      .nav-links { gap: 18px; }
+      .card { padding: 20px 18px; }
+      .stage { height: min(70vw, 44vh); }
+      .params-grid { grid-template-columns: 1fr; }
+      .step-title { letter-spacing: .12em; }
+      .result-actions { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001s !important;
+      }
+      .rise { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar rise">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>沫友乾</span>
+        <span class="slash">/</span>
+        <span class="mark-sub">视频转 GIF</span>
+      </div>
+      <nav class="nav-links">
+        <a href="../../index.html">首页</a>
+        <a class="back-link" href="../index.html">← 返回工具箱</a>
+      </nav>
+    </header>
+
+    <section class="page-head rise d1">
+      <div class="eyebrow">Video to GIF</div>
+      <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2" y="5" width="20" height="14" rx="3"/>
+          <path d="M10 9.5v5M15 10.5v3M15 10.5h.01M18.5 10v1.8M18.5 14v.01"/>
+        </svg>
+        视频转 GIF
+      </h1>
+      <p>从视频里截取一段，转成动图。全程在本地浏览器里完成，不上传任何文件</p>
+    </section>
+
+    <!-- 第 1 步：选择视频 -->
+    <section class="card" id="step-select">
+      <div class="step-head">
+        <div class="step-num">1</div>
+        <div class="step-title">选择视频</div>
+      </div>
+      <button class="pick-btn" id="pickBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 7.5a2 2 0 0 1 2-2h3.3l1.8 2.2h8.1a2 2 0 0 1 2 2v7.3a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z"/>
+        </svg>
+        点击选择视频
+        <span class="sub">从电脑或手机相册里挑一个视频（MP4 / MOV / WebM）</span>
+      </button>
+      <input type="file" id="fileInput" accept="video/*" hidden>
+    </section>
+
+    <!-- 第 2 步：参数与转换 -->
+    <section class="card hidden" id="step-edit">
+      <button class="change-btn" id="changeBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 2.5 21 6.5 17 10.5"/>
+          <path d="M3 11.5v-1a4 4 0 0 1 4-4h14"/>
+          <path d="M7 21.5 3 17.5 7 13.5"/>
+          <path d="M21 12.5v1a4 4 0 0 1-4 4H3"/>
+        </svg>
+        换一个视频
+      </button>
+
+      <div class="step-head">
+        <div class="step-num">2</div>
+        <div class="step-title">调整参数</div>
+      </div>
+
+      <div class="stage" id="stage">
+        <video id="video" playsinline preload="auto"></video>
+        <div class="crop-layer hidden" id="cropLayer">
+          <div class="crop-box" id="cropBox">
+            <span class="h nw" data-dir="nw"></span>
+            <span class="h n"  data-dir="n"></span>
+            <span class="h ne" data-dir="ne"></span>
+            <span class="h e"  data-dir="e"></span>
+            <span class="h se" data-dir="se"></span>
+            <span class="h s"  data-dir="s"></span>
+            <span class="h sw" data-dir="sw"></span>
+            <span class="h w"  data-dir="w"></span>
+          </div>
+        </div>
+        <div class="stage-cover hidden" id="stageCover">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+               style="color: var(--live)">
+            <rect x="2" y="5" width="20" height="14" rx="3"/>
+            <path d="M10 9.5v5M15 10.5v3M15 10.5h.01M18.5 10v1.8M18.5 14v.01"/>
+          </svg>
+          <div class="pct" id="coverPct">正在转换… 0%</div>
+        </div>
+      </div>
+
+      <div class="crop-tools hidden" id="cropTools">
+        <button class="crop-toggle-btn" id="cropToggle" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="11" height="11" rx="1.5"/>
+            <rect x="10" y="10" width="11" height="11" rx="1.5"/>
+          </svg>
+          画面裁剪
+        </button>
+        <span class="crop-info" id="cropInfo"></span>
+        <button class="reset-btn hidden" id="resetCropBtn" type="button">重置裁剪</button>
+      </div>
+
+      <div class="params-grid">
+        <div>
+          <div class="param-label">
+            <span>截取范围</span>
+            <span class="val" id="clipLabel">0:00 – 0:00 · 0 秒</span>
+          </div>
+          <input type="range" id="startSlider" min="0" max="0" step="0.1" value="0" disabled>
+          <div class="param-sub">起始 <span class="val" id="startVal">0:00</span></div>
+          <input type="range" id="endSlider" min="0" max="0" step="0.1" value="0" disabled>
+          <div class="param-sub">结束 <span class="val" id="endVal">0:00</span></div>
+        </div>
+
+        <div>
+          <div class="param-label">
+            <span>输出宽度</span>
+            <span class="val" id="widthVal">480 px</span>
+          </div>
+          <input type="range" id="widthSlider" min="96" max="1024" step="16" value="480">
+          <div class="param-sub">宽度越小，文件越小。长图建议不超过 640</div>
+        </div>
+
+        <div>
+          <div class="param-label">
+            <span>帧率</span>
+            <span class="val" id="fpsVal">10 fps</span>
+          </div>
+          <input type="range" id="fpsSlider" min="1" max="30" step="1" value="10">
+          <div class="param-sub">帧率越高越流畅，文件也越大</div>
+        </div>
+
+        <div>
+          <div class="param-label">
+            <span>颜色数</span>
+            <span class="val">256</span>
+          </div>
+          <div class="seg" id="colorSeg">
+            <button class="seg-btn" type="button" data-colors="64">64</button>
+            <button class="seg-btn" type="button" data-colors="128">128</button>
+            <button class="seg-btn active" type="button" data-colors="256">256</button>
+          </div>
+          <div class="param-sub">颜色越多越细腻，文件略大</div>
+        </div>
+
+        <div class="span-row">
+          <div class="param-label">
+            <span>抖动平滑</span>
+            <span class="val" id="ditherVal">开</span>
+          </div>
+          <div class="seg" id="ditherSeg">
+            <button class="seg-btn active" type="button" data-dither="1">开</button>
+            <button class="seg-btn" type="button" data-dither="0">关</button>
+          </div>
+          <div class="param-sub">误差扩散混色，减少渐变区的色带，文件略大</div>
+        </div>
+
+        <div>
+          <div class="param-label">
+            <span>循环次数</span>
+            <span class="val" id="loopVal">无限</span>
+          </div>
+          <div class="seg" id="loopSeg">
+            <button class="seg-btn active" type="button" data-loop="0">无限</button>
+            <button class="seg-btn" type="button" data-loop="1">1 次</button>
+            <button class="seg-btn" type="button" data-loop="2">2 次</button>
+            <button class="seg-btn" type="button" data-loop="3">3 次</button>
+          </div>
+          <div class="param-sub">播放结束后的循环方式，无限适合表情包</div>
+        </div>
+
+        <div>
+          <div class="param-label">
+            <span>播放倍速</span>
+            <span class="val" id="speedVal">1x</span>
+          </div>
+          <div class="seg" id="speedSeg">
+            <button class="seg-btn" type="button" data-speed="0.5">0.5x</button>
+            <button class="seg-btn active" type="button" data-speed="1">1x</button>
+            <button class="seg-btn" type="button" data-speed="2">2x</button>
+            <button class="seg-btn" type="button" data-speed="3">3x</button>
+          </div>
+          <div class="param-sub">2x = 按原视频两倍速度播放，抽帧帧率不变</div>
+        </div>
+      </div>
+
+      <div class="est-line" id="estLine">
+        <div class="est-left">
+          <span id="estInfo">预计 0 帧 · 输出 –</span>
+          <span class="est-warn hidden" id="estWarn">视频较长，建议缩短截取范围</span>
+        </div>
+        <span class="size-info" id="sizeInfo">原视频 – · GIF 预计 –</span>
+      </div>
+
+      <button class="run-btn" id="runBtn" type="button">开始转换</button>
+
+      <div class="progress-row hidden" id="progressRow">
+        <div class="progress"><div class="fill" id="progressFill"></div></div>
+        <div class="progress-meta">
+          <span id="progressText">准备中…</span>
+          <button class="cancel-btn" id="cancelBtn" type="button">取消</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第 3 步：结果 -->
+    <section class="card hidden" id="step-result">
+      <div class="step-head">
+        <div class="step-num">3</div>
+        <div class="step-title">结果</div>
+      </div>
+
+      <div class="stage" id="resultStage">
+        <img id="gifPreview" alt="转换出的 GIF 预览" style="max-width:100%; max-height:100%; display:block;">
+      </div>
+
+      <div class="result-info">
+        <span>GIF <span class="big" id="outSize">–</span></span>
+        <span>原视频 <span class="big" id="srcSize">–</span></span>
+        <span id="gifDim">–</span>
+      </div>
+
+      <div class="result-actions">
+        <button class="save-btn" id="downloadBtn" type="button">💾 下载 GIF</button>
+        <button class="again-btn" id="againBtn" type="button">再转一个</button>
+      </div>
+      <div class="hint">动图在电脑、手机上都能直接用，发微信、做表情包都可以。</div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="gifenc.browser.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      var $ = function (id) { return document.getElementById(id); };
+      var fileInput = $('fileInput'), pickBtn = $('pickBtn'), changeBtn = $('changeBtn');
+      var video = $('video');
+      var startSlider = $('startSlider'), endSlider = $('endSlider');
+      var widthSlider = $('widthSlider'), fpsSlider = $('fpsSlider');
+      var runBtn = $('runBtn'), cancelBtn = $('cancelBtn');
+      var progressRow = $('progressRow'), progressFill = $('progressFill'), progressText = $('progressText');
+      var stageCover = $('stageCover'), coverPct = $('coverPct');
+      var toastEl = $('toast');
+      var cropBox = $('cropBox'), cropLayer = $('cropLayer'), cropTools = $('cropTools');
+      var cropToggle = $('cropToggle'), resetCropBtn = $('resetCropBtn');
+
+      var file = null, objectUrl = null, duration = 0;
+      var gifUrl = null;
+      var cancelFlag = false, converting = false;
+      var colors = 256, loop = 0, speed = 1, dither = 1;
+
+      /* 裁剪框状态：坐标相对 stage（px） */
+      var cropOn = false, cropDirty = false;
+      var crop = { x: 0, y: 0, w: 0, h: 0 };
+
+      var ENCODER = window.GIFENC;
+      var MEM_LIMIT = 400 * 1024 * 1024; /* 抽帧缓冲上限 400MB，防止浏览器撑爆 */
+
+      /* ---------- 选择视频 ---------- */
+      pickBtn.addEventListener('click', function () { fileInput.click(); });
+      changeBtn.addEventListener('click', function () { fileInput.click(); });
+      fileInput.addEventListener('change', function () {
+        var f = fileInput.files && fileInput.files[0];
+        if (f) loadVideo(f);
+        fileInput.value = '';
+      });
+
+      function loadVideo(f) {
+        file = f;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = URL.createObjectURL(f);
+        video.src = objectUrl;
+        video.onloadedmetadata = function () {
+          duration = isFinite(video.duration) ? video.duration : 0;
+          if (duration <= 0) { showToast('没读到视频时长，换一个视频试试'); return; }
+          setupSliders();
+          $('step-select').classList.add('hidden');
+          $('step-edit').classList.remove('hidden');
+          $('step-result').classList.add('hidden');
+          /* 换视频后重置裁剪 */
+          cropOn = false; cropDirty = false;
+          cropLayer.classList.add('hidden');
+          cropTools.classList.add('hidden');
+          resetCropBtn.classList.add('hidden');
+          cropToggle.classList.remove('on');
+          $('step-edit').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        video.onerror = function () { showToast('这个视频打不开，换一个格式试试'); };
+      }
+
+      function fmtTime(s) {
+        s = Math.max(0, Math.round(s));
+        var m = Math.floor(s / 60), sec = s % 60;
+        return m + ':' + (sec < 10 ? '0' : '') + sec;
+      }
+
+      function fmtSize(bytes) {
+        if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+        return bytes + ' B';
+      }
+
+      function setupSliders() {
+        var max = Math.max(0.1, Math.floor(duration * 10) / 10);
+        startSlider.max = String(max);
+        endSlider.max = String(max);
+        startSlider.disabled = false;
+        endSlider.disabled = false;
+        startSlider.value = '0';
+        endSlider.value = String(max);
+        syncClip();
+      }
+
+      /* ---------- 裁剪框 ---------- */
+      function videoRect() {
+        return {
+          x: video.offsetLeft, y: video.offsetTop,
+          w: video.offsetWidth, h: video.offsetHeight
+        };
+      }
+
+      function initCrop() {
+        var r = videoRect();
+        if (r.w <= 0 || r.h <= 0) return;
+        crop = { x: r.x, y: r.y, w: r.w, h: r.h };
+        cropDirty = false;
+        applyCropBox();
+      }
+
+      function applyCropBox() {
+        cropBox.style.left = crop.x + 'px';
+        cropBox.style.top = crop.y + 'px';
+        cropBox.style.width = crop.w + 'px';
+        cropBox.style.height = crop.h + 'px';
+        $('cropInfo').textContent = '裁剪 ' + Math.round(crop.w) + '×' + Math.round(crop.h);
+        updateEstimate();
+      }
+
+      function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+      /* 拖拽移动 / 调整 */
+      var drag = null;
+
+      cropBox.addEventListener('pointerdown', function (e) {
+        if (converting) return;
+        var h = e.target.closest('.h');
+        e.preventDefault();
+        cropBox.setPointerCapture(e.pointerId);
+        drag = h
+          ? { mode: 'resize', dir: h.dataset.dir, px: e.clientX, py: e.clientY, start: { x: crop.x, y: crop.y, w: crop.w, h: crop.h } }
+          : { mode: 'move', px: e.clientX, py: e.clientY, start: { x: crop.x, y: crop.y, w: crop.w, h: crop.h } };
+      });
+
+      cropBox.addEventListener('pointermove', function (e) {
+        if (!drag) return;
+        var r = videoRect();
+        var dx = e.clientX - drag.px, dy = e.clientY - drag.py;
+        var MIN = 24;
+        if (drag.mode === 'move') {
+          crop.x = clamp(drag.start.x + dx, r.x, r.x + r.w - crop.w);
+          crop.y = clamp(drag.start.y + dy, r.y, r.y + r.h - crop.h);
+        } else {
+          var s = drag.start, dir = drag.dir;
+          var left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
+          if (dir.indexOf('w') >= 0) left = clamp(s.x + dx, r.x, right - MIN);
+          if (dir.indexOf('e') >= 0) right = clamp(s.x + s.w + dx, left + MIN, r.x + r.w);
+          if (dir.indexOf('n') >= 0) top = clamp(s.y + dy, r.y, bottom - MIN);
+          if (dir.indexOf('s') >= 0) bottom = clamp(s.y + s.h + dy, top + MIN, r.y + r.h);
+          crop.x = left; crop.y = top;
+          crop.w = right - left; crop.h = bottom - top;
+        }
+        cropDirty = true;
+        applyCropBox();
+      });
+
+      function endDrag() {
+        drag = null;
+        updateEstimate();
+      }
+      cropBox.addEventListener('pointerup', endDrag);
+      cropBox.addEventListener('pointercancel', endDrag);
+
+      cropToggle.addEventListener('click', function () {
+        cropOn = !cropOn;
+        if (cropOn) {
+          cropTools.classList.remove('hidden');
+          cropLayer.classList.remove('hidden');
+          cropToggle.classList.add('on');
+          if (!cropDirty) initCrop(); else applyCropBox();
+        } else {
+          cropTools.classList.remove('hidden');
+          cropLayer.classList.add('hidden');
+          cropToggle.classList.remove('on');
+          updateEstimate();
+        }
+      });
+
+      resetCropBtn.addEventListener('click', function () { initCrop(); });
+
+      /* ---------- 参数联动 ---------- */
+      function syncClip() {
+        var s = parseFloat(startSlider.value), e = parseFloat(endSlider.value);
+        if (s >= e) { e = Math.min(parseFloat(endSlider.max), s + 0.1); endSlider.value = String(e); }
+        var len = Math.max(0, e - s);
+        $('clipLabel').textContent = fmtTime(s) + ' – ' + fmtTime(e) + ' · ' + len.toFixed(1) + ' 秒';
+        $('startVal').textContent = fmtTime(s);
+        $('endVal').textContent = fmtTime(e);
+        updateEstimate();
+      }
+
+      startSlider.addEventListener('input', function () {
+        var s = parseFloat(startSlider.value), e = parseFloat(endSlider.value);
+        if (s >= e) startSlider.value = String(Math.max(0, e - 0.1));
+        syncClip();
+      });
+      endSlider.addEventListener('input', function () {
+        var s = parseFloat(startSlider.value), e = parseFloat(endSlider.value);
+        if (e <= s) endSlider.value = String(Math.min(parseFloat(endSlider.max), s + 0.1));
+        syncClip();
+      });
+      widthSlider.addEventListener('input', function () { $('widthVal').textContent = widthSlider.value + ' px'; updateEstimate(); });
+      fpsSlider.addEventListener('input', function () { $('fpsVal').textContent = fpsSlider.value + ' fps'; updateEstimate(); });
+
+      $('colorSeg').addEventListener('click', function (e) {
+        var btn = e.target.closest('.seg-btn');
+        if (!btn) return;
+        $('colorSeg').querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        colors = parseInt(btn.dataset.colors, 10);
+        updateEstimate();
+      });
+
+      $('ditherSeg').addEventListener('click', function (e) {
+        var btn = e.target.closest('.seg-btn');
+        if (!btn) return;
+        $('ditherSeg').querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        dither = parseInt(btn.dataset.dither, 10);
+        $('ditherVal').textContent = dither ? '开' : '关';
+        updateEstimate();
+      });
+
+      $('loopSeg').addEventListener('click', function (e) {
+        var btn = e.target.closest('.seg-btn');
+        if (!btn) return;
+        $('loopSeg').querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        loop = parseInt(btn.dataset.loop, 10);
+        $('loopVal').textContent = loop === 0 ? '无限' : loop + ' 次';
+      });
+
+      $('speedSeg').addEventListener('click', function (e) {
+        var btn = e.target.closest('.seg-btn');
+        if (!btn) return;
+        $('speedSeg').querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        speed = parseFloat(btn.dataset.speed);
+        $('speedVal').textContent = speed + 'x';
+      });
+
+      /* 裁剪比例（宽/高），未开启裁剪时取视频原始比例 */
+      function outputRatio() {
+        var vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+        if (cropOn && crop.w > 0 && crop.h > 0) return crop.h / crop.w;
+        return vh / vw;
+      }
+
+      function updateEstimate() {
+        if (duration <= 0) return;
+        var s = parseFloat(startSlider.value), e = parseFloat(endSlider.value);
+        var fps = parseInt(fpsSlider.value, 10);
+        var frames = Math.max(1, Math.round((e - s) * fps));
+        var w = parseInt(widthSlider.value, 10);
+        var h = Math.max(1, Math.round(w * outputRatio()));
+        $('estInfo').textContent = '预计 ' + frames + ' 帧 · 输出 ' + w + '×' + h;
+        var long = frames > 900;
+        $('estWarn').classList.toggle('hidden', !long);
+        /* 原视频大小 + GIF 预估（按真实编码实测校准：256 色实拍帧约 0.7 字节/像素，复杂内容可达 1.2；颜色越少越小；抖动开启有高频噪声，文件略大） */
+        var src = file ? fmtSize(file.size) : '–';
+        var loK, hiK;
+        if (colors <= 64) { loK = 0.28; hiK = 0.80; }
+        else if (colors <= 128) { loK = 0.32; hiK = 0.95; }
+        else { loK = 0.35; hiK = 1.20; }
+        if (dither) { loK *= 1.15; hiK *= 1.30; }
+        var low = frames * w * h * loK;
+        var high = frames * w * h * hiK;
+        $('sizeInfo').innerHTML = '原视频 <span class="big">' + src + '</span> · GIF 预计 <span class="big">' +
+          fmtSize(low) + ' – ' + fmtSize(high) + '</span>';
+      }
+
+      video.addEventListener('click', function () {
+        if (converting || cropOn) return;
+        if (video.paused) { video.play(); } else { video.pause(); }
+      });
+
+      window.addEventListener('resize', function () {
+        if (!file) return;
+        if (cropOn && !cropDirty) initCrop();
+      });
+
+      /* ---------- 转换 ---------- */
+
+      /* 抖动平滑：Floyd-Steinberg 误差扩散 + 5-5-5 最近色查表（每像素 O(1)） */
+      var ditherLUT = null;
+      function buildDitherLUT(palette) {
+        var lut = new Uint8Array(32768);
+        for (var r5 = 0; r5 < 32; r5++) {
+          var rr = Math.round(r5 * 255 / 31);
+          for (var g5 = 0; g5 < 32; g5++) {
+            var gg = Math.round(g5 * 255 / 31);
+            for (var b5 = 0; b5 < 32; b5++) {
+              var bb = Math.round(b5 * 255 / 31);
+              var best = 0, bestD = 1e30;
+              for (var k = 0; k < palette.length; k++) {
+                var dr = rr - palette[k][0], dg = gg - palette[k][1], db = bb - palette[k][2];
+                var d = dr * dr + dg * dg + db * db;
+                if (d < bestD) { bestD = d; best = k; }
+              }
+              lut[(r5 << 10) | (g5 << 5) | b5] = best;
+            }
+          }
+        }
+        return lut;
+      }
+      function ditherFrame(rgba, palette, w, h) {
+        if (!ditherLUT) ditherLUT = buildDitherLUT(palette);
+        var n = w * h;
+        var err = new Float32Array(n * 3);
+        for (var y = 0; y < h; y++) {
+          var rowBase = y * w;
+          for (var x = 0; x < w; x++) {
+            var i = (rowBase + x) * 4;
+            var e3 = (rowBase + x) * 3;
+            var r = rgba[i] + err[e3];
+            var g = rgba[i + 1] + err[e3 + 1];
+            var b = rgba[i + 2] + err[e3 + 2];
+            r = r < 0 ? 0 : r > 255 ? 255 : r;
+            g = g < 0 ? 0 : g > 255 ? 255 : g;
+            b = b < 0 ? 0 : b > 255 ? 255 : b;
+            var best = ditherLUT[((r * 31 / 255) | 0) << 10 | ((g * 31 / 255) | 0) << 5 | ((b * 31 / 255) | 0)];
+            var nr = palette[best][0], ng = palette[best][1], nb = palette[best][2];
+            rgba[i] = nr; rgba[i + 1] = ng; rgba[i + 2] = nb;
+            var er = r - nr, eg = g - ng, eb = b - nb;
+            if (x + 1 < w) { var j = e3 + 3; err[j] += er * 0.4375; err[j + 1] += eg * 0.4375; err[j + 2] += eb * 0.4375; }
+            if (y + 1 < h) {
+              var nb3 = rowBase + w + x;
+              if (x > 0) { var j = (nb3 - 1) * 3; err[j] += er * 0.1875; err[j + 1] += eg * 0.1875; err[j + 2] += eb * 0.1875; }
+              var j = nb3 * 3; err[j] += er * 0.3125; err[j + 1] += eg * 0.3125; err[j + 2] += eb * 0.3125;
+              if (x + 1 < w) { var j = (nb3 + 1) * 3; err[j] += er * 0.0625; err[j + 1] += eg * 0.0625; err[j + 2] += eb * 0.0625; }
+            }
+          }
+        }
+      }
+
+      function seekTo(t) {
+        return new Promise(function (resolve) {
+          var done = false;
+          function onSeek() { if (!done) { done = true; video.removeEventListener('seeked', onSeek); clearTimeout(timer); resolve(); } }
+          function finish() { if (!done) { done = true; video.removeEventListener('seeked', onSeek); resolve(); } }
+          /* 兜底 3 秒：大视频远距离 seek 可能较慢，宁可多等也别画到旧帧 */
+          var timer = setTimeout(function () { finish(); }, 3000);
+          video.addEventListener('seeked', onSeek);
+          try { video.currentTime = t; } catch (err) { clearTimeout(timer); finish(); }
+        });
+      }
+
+      function setProgress(pct, label) {
+        progressFill.style.width = Math.min(100, Math.max(0, pct)) + '%';
+        progressText.textContent = label;
+        coverPct.textContent = '正在转换… ' + Math.floor(pct) + '%';
+      }
+
+      runBtn.addEventListener('click', function () { convert(); });
+      cancelBtn.addEventListener('click', function () { if (converting) cancelFlag = true; });
+
+      function convert() {
+        if (!file) { showToast('请先选择视频'); return; }
+        if (converting) return;
+
+        var s = parseFloat(startSlider.value), e = parseFloat(endSlider.value);
+        var fps = parseInt(fpsSlider.value, 10);
+        var w = parseInt(widthSlider.value, 10);
+        var ratio = outputRatio();
+        var outW = w, outH = Math.max(1, Math.round(w * ratio));
+        var frames = Math.max(1, Math.round((e - s) * fps));
+
+        if (frames * outW * outH * 4 > MEM_LIMIT) {
+          showToast('要处理的帧太多了，请缩短截取范围、降低帧率或缩小宽度');
+          return;
+        }
+
+        /* 源画面裁剪区域（像素坐标，相对视频原始尺寸） */
+        var vx = video.offsetLeft, vy = video.offsetTop;
+        var vw = video.offsetWidth, vh = video.offsetHeight;
+        var cx = cropOn ? crop.x : vx, cy = cropOn ? crop.y : vy;
+        var cw = cropOn ? crop.w : vw, ch = cropOn ? crop.h : vh;
+        var sx = (cx - vx) / vw * video.videoWidth;
+        var sy = (cy - vy) / vh * video.videoHeight;
+        var sw = cw / vw * video.videoWidth;
+        var sh = ch / vh * video.videoHeight;
+
+        converting = true;
+        cancelFlag = false;
+        runBtn.disabled = true;
+        runBtn.textContent = '正在转换…';
+        progressRow.classList.remove('hidden');
+        $('estWarn').classList.add('hidden');
+        stageCover.classList.remove('hidden');
+        video.pause();
+        setProgress(1, '准备中…');
+
+        var canvas = document.createElement('canvas');
+        canvas.width = outW; canvas.height = outH;
+        var ctx = canvas.getContext('2d', { willReadFrequently: true });
+        var big = new Uint8Array(frames * outW * outH * 4);
+        var step = e - s;
+        var delay = Math.max(1, Math.round(1000 / (fps * speed))); /* gifenc 的 delay 单位是毫秒，内部转 GIF 百分之一秒 */
+
+        /* 第一遍：逐帧 seek 并收集像素（用于全局调色板，避免颜色闪烁） */
+        (function pass1(i) {
+          if (cancelFlag) { finish(false); return; }
+          if (i >= frames) { pass2(); return; }
+          var t = s + (step * i / Math.max(1, frames - 1));
+          if (t > e - 0.005) t = e - 0.005;
+          seekTo(t).then(function () {
+            if (cancelFlag) { finish(false); return; }
+            try {
+              ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
+              var img = ctx.getImageData(0, 0, outW, outH);
+              big.set(img.data, i * outW * outH * 4);
+            } catch (err) { finish(false); showToast('读取画面失败：' + err.message); return; }
+            setProgress(2 + 36 * (i + 1) / frames, '读取画面 ' + (i + 1) + ' / ' + frames);
+            setTimeout(function () { pass1(i + 1); }, 0);
+          });
+        })(0);
+
+        /* 第二遍：量化 + 编码 */
+        function pass2() {
+          if (cancelFlag) { finish(false); return; }
+          setProgress(40, '分析颜色…');
+          setTimeout(function () {
+            var palette;
+            try { palette = ENCODER.quantize(big, colors); }
+            catch (err) { finish(false); showToast('分析颜色失败：' + err.message); return; }
+            setProgress(44, '编码帧 0 / ' + frames);
+            var gif = ENCODER.GIFEncoder();
+            var frameBytes = outW * outH * 4;
+            /* gifenc 的 applyPalette 内部按 e.buffer 取整块数据，必须用独立 buffer 的单帧拷贝，
+               否则 subarray 视图会带上整块 15 帧缓冲 → 每帧编码全部数据（文件膨胀 15 倍）且各帧内容相同（GIF 静止） */
+            var frameRGBA = new Uint8Array(frameBytes);
+            (function encode(i) {
+              if (cancelFlag) { finish(false); return; }
+              if (i >= frames) {
+                try {
+                  gif.finish();
+                  var bytes = gif.bytes();
+                  var blob = new Blob([bytes], { type: 'image/gif' });
+                  setProgress(100, '完成');
+                  setTimeout(function () { finish(true, blob); }, 120);
+                } catch (err) { finish(false); showToast('编码失败：' + err.message); }
+                return;
+              }
+              try {
+                frameRGBA.set(big.subarray(i * frameBytes, (i + 1) * frameBytes));
+                if (dither) ditherFrame(frameRGBA, palette, outW, outH);
+                var idx = ENCODER.applyPalette(frameRGBA, palette);
+                /* 首帧传 palette 写入全局调色板；后续帧不传，直接沿用全局调色板（省每帧 768B 局部调色板） */
+                gif.writeFrame(idx, outW, outH, { palette: i === 0 ? palette : undefined, delay: delay, repeat: loop });
+              } catch (err) { finish(false); showToast('编码失败：' + err.message); return; }
+              setProgress(44 + 54 * (i + 1) / frames, '编码帧 ' + (i + 1) + ' / ' + frames);
+              setTimeout(function () { encode(i + 1); }, 0);
+            })(0);
+          }, 30);
+        }
+
+        /* 收尾 */
+        function finish(ok, blob) {
+          converting = false;
+          runBtn.disabled = false;
+          runBtn.textContent = '开始转换';
+          progressRow.classList.add('hidden');
+          stageCover.classList.add('hidden');
+          big = null; /* 释放大缓冲 */
+          if (!ok) {
+            setProgress(0, '');
+            if (cancelFlag) showToast('已取消');
+            return;
+          }
+          showResult(blob);
+        }
+      }
+
+      /* ---------- 结果 ---------- */
+      function showResult(blob) {
+        if (gifUrl) URL.revokeObjectURL(gifUrl);
+        gifUrl = URL.createObjectURL(blob);
+        $('gifPreview').src = gifUrl;
+        $('outSize').textContent = fmtSize(blob.size);
+        $('srcSize').textContent = file ? fmtSize(file.size) : '–';
+        var dim = $('estInfo').textContent.replace('预计 ', '').replace('帧 · 输出', '帧 ·');
+        var meta = [];
+        if (loop === 0) meta.push('无限循环'); else meta.push('循环 ' + loop + ' 次');
+        meta.push(speed + 'x');
+        $('gifDim').textContent = dim + ' · ' + meta.join(' · ');
+        $('step-edit').classList.add('hidden');
+        $('step-result').classList.remove('hidden');
+        $('step-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showToast('✅ 已生成，可以下载了');
+      }
+
+      $('downloadBtn').addEventListener('click', function () {
+        if (!gifUrl) { showToast('还没有生成结果'); return; }
+        var base = file.name.replace(/\.[^.]+$/, '');
+        var a = document.createElement('a');
+        a.href = gifUrl;
+        a.download = base + '.gif';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+        showToast('✅ 已保存，请到下载里查看');
+      });
+
+      $('againBtn').addEventListener('click', function () {
+        $('step-result').classList.add('hidden');
+        $('step-edit').classList.remove('hidden');
+        $('step-edit').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+
+      /* ---------- 提示 ---------- */
+      var toastTimer;
+      function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 3400);
+      }
+    })();
+  </script>
+</body>
+</html>

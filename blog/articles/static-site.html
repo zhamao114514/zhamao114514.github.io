@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>静态网站搭建心得 - 我的博客</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  min-height: 100vh;
+}
+
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: url('../背景.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+.background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.6) 100%);
+}
+
+.article-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 48px 24px 60px;
+}
+
+.back-btn {
+  display: inline-block;
+  margin-bottom: 28px;
+  padding: 8px 20px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 14px;
+  backdrop-filter: blur(8px);
+  transition: background 0.3s, transform 0.2s;
+}
+.back-btn:hover {
+  background: rgba(255,255,255,0.2);
+  transform: translateX(-4px);
+}
+
+.article-card {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 44px 48px;
+  animation: fadeInUp 0.8s ease both;
+}
+
+.article-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.article-meta {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+.article-content p {
+  font-size: 16px;
+  line-height: 1.9;
+  color: rgba(255,255,255,0.88);
+  margin-bottom: 20px;
+}
+
+.article-content h2 {
+  font-size: 21px;
+  margin: 36px 0 16px;
+  padding-left: 12px;
+  border-left: 4px solid rgba(255,255,255,0.5);
+}
+
+.article-content blockquote {
+  margin: 24px 0;
+  padding: 16px 24px;
+  background: rgba(255,255,255,0.06);
+  border-left: 3px solid rgba(255,255,255,0.35);
+  border-radius: 0 8px 8px 0;
+  color: rgba(255,255,255,0.75);
+  font-style: italic;
+}
+
+.article-content code {
+  background: rgba(0,0,0,0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+.article-content ul {
+  margin: 0 0 20px 24px;
+}
+.article-content li {
+  font-size: 16px;
+  line-height: 1.9;
+  color: rgba(255,255,255,0.88);
+  margin-bottom: 8px;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .article-wrap { padding: 32px 16px 48px; }
+  .article-card { padding: 28px 24px; }
+  .article-title { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+
+<div class="background"></div>
+
+<div class="article-wrap">
+  <a class="back-btn" href="../index.html">← 返回首页</a>
+
+  <article class="article-card">
+    <h1 class="article-title">静态网站搭建心得</h1>
+    <div class="article-meta">2026-08-30 · 技术</div>
+
+    <div class="article-content">
+      <p>从零开始搭建一个纯静态博客，不需要服务器、不需要数据库，一个 HTML 文件就能跑起来。本文分享一下实现过程中的几个关键点。</p>
+
+      <h2>一、开屏动画的实现</h2>
+      <p>开屏动画使用 HTML5 的 <code>&lt;video&gt;</code> 标签实现，核心思路是：</p>
+      <ul>
+        <li>页面加载时显示一个全屏覆盖层（<code>position: fixed; inset: 0; z-index: 9999</code>）</li>
+        <li>视频设置 <code>autoplay muted playsinline</code>，确保浏览器允许自动播放</li>
+        <li>监听 <code>ended</code> 事件，播放完毕后给覆盖层加 <code>opacity: 0</code> 的过渡类</li>
+        <li>过渡动画结束后移除视频节点，释放内存</li>
+      </ul>
+
+      <blockquote>注意：大多数浏览器禁止带声音的视频自动播放，所以开屏动画必须加 <code>muted</code>，否则视频不会播放，甚至可能被拦截后直接跳过。</blockquote>
+
+      <h2>二、自适应背景图</h2>
+      <p>背景图要在不同屏幕尺寸下都不变形，核心 CSS 三件套：</p>
+      <ul>
+        <li><code>background-size: cover</code> — 等比缩放填满容器，超出部分裁切</li>
+        <li><code>background-position: center center</code> — 以中心为基准裁切，保证主体不丢</li>
+        <li><code>background-repeat: no-repeat</code> — 不重复平铺</li>
+      </ul>
+      <p>再叠加一层暗色渐变遮罩（<code>linear-gradient</code>），让白色文字在任何背景图上都清晰可读。</p>
+
+      <h2>三、文章页面的组织</h2>
+      <p>所有文章放在 <code>articles/</code> 文件夹下，每篇文章是一个独立的 HTML 文件。首页的文章卡片用 <code>&lt;a&gt;</code> 标签包裹，点击跳转到对应的文章页面。文章页面左上角放「返回首页」按钮，形成完整的浏览闭环。</p>
+
+      <h2>四、为什么选纯静态</h2>
+      <p>纯静态网站的优势很明显：</p>
+      <ul>
+        <li><strong>零成本</strong>：GitHub Pages、Netlify、Vercel 都能免费托管</li>
+        <li><strong>极速</strong>：没有后端渲染，HTML 直接下发</li>
+        <li><strong>安全</strong>：没有数据库、没有登录，不存在注入风险</li>
+        <li><strong>简单</strong>：一个文本编辑器就能维护</li>
+      </ul>
+
+      <p>对于个人博客来说，纯静态完全够用。后续如果需要搜索、评论等功能，可以再接入第三方服务（如 Algolia、Giscus），不需要改整体架构。</p>
+    </div>
+  </article>
+</div>
+
+</body>
+</html>

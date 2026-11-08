@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的博客</title>
+<style>
+/* ========== 全局重置 ========== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ========== 开屏动画层 ========== */
+/* (o･ω･o) 全屏覆盖，播放完自动淡出 */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.8s ease, visibility 0.8s ease;
+}
+
+.splash.hide {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;       /* 视频也居中裁切，不变形 */
+}
+
+/* 跳过按钮 */
+.skip-btn {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  padding: 8px 20px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.3s, transform 0.2s;
+  z-index: 10000;
+}
+
+.skip-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  transform: scale(1.05);
+}
+
+/* ========== 背景图层 ========== */
+/* (๑•̀ㅂ•́)و✧ 居中裁切，任何屏幕不变形 */
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: url('背景.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* 背景上的暗色遮罩，让文字更清晰 */
+.background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+/* ========== 主内容 ========== */
+.content {
+  position: relative;
+  z-index: 1;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 60px 24px 40px;
+}
+
+/* 头部 */
+.site-header {
+  text-align: center;
+  margin-bottom: 60px;
+  animation: fadeInUp 1s ease 0.3s both;
+}
+
+.site-title {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.site-subtitle {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 1px;
+}
+
+/* 导航 */
+.site-nav {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 56px;
+  animation: fadeInUp 1s ease 0.5s both;
+}
+
+.site-nav a {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  font-size: 15px;
+  padding: 6px 4px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.3s, border-color 0.3s;
+}
+
+.site-nav a:hover {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+/* 文章列表 */
+.posts {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: fadeInUp 1s ease 0.7s both;
+}
+
+/* 文章卡片链接，去掉下划线继承颜色 */
+.post-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.post-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 28px 32px;
+  cursor: pointer;
+  transition: transform 0.3s, background 0.3s, border-color 0.3s;
+}
+
+.post-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.post-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.post-meta {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 12px;
+}
+
+.post-excerpt {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.7;
+}
+
+/* 页脚 */
+.site-footer {
+  text-align: center;
+  margin-top: 60px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  animation: fadeInUp 1s ease 0.9s both;
+}
+
+/* ========== 动画 ========== */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 640px) {
+  .content { padding: 40px 16px 32px; }
+  .site-title { font-size: 30px; }
+  .site-nav { gap: 20px; flex-wrap: wrap; }
+  .post-card { padding: 20px 22px; }
+  .post-title { font-size: 17px; }
+  .skip-btn { top: 16px; right: 16px; padding: 6px 16px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ========== 开屏动画 (｡･ω･｡)ﾉ♡ ========== -->
+<div class="splash" id="splash">
+  <video id="splashVideo" autoplay muted playsinline preload="auto"></video>
+  <button class="skip-btn" id="skipBtn">跳过 ⏭</button>
+</div>
+
+<!-- ========== 背景图 ========== -->
+<div class="background"></div>
+
+<!-- ========== 博客内容 ========== -->
+<div class="content">
+
+  <header class="site-header">
+    <h1 class="site-title">我的博客</h1>
+    <p class="site-subtitle">记录生活 · 分享技术 · 保持热爱</p>
+  </header>
+
+  <nav class="site-nav">
+    <a href="#">首页</a>
+    <a href="#">归档</a>
+    <a href="#">分类</a>
+    <a href="#">标签</a>
+    <a href="#">关于</a>
+  </nav>
+
+  <main class="posts">
+
+    <a class="post-link" href="articles/welcome.html">
+      <article class="post-card">
+        <h2 class="post-title">欢迎来到我的博客</h2>
+        <div class="post-meta">2026-08-31 · 随笔</div>
+        <p class="post-excerpt">这是博客的第一篇文章。你可以在这里记录学习笔记、生活感悟，或者任何想分享的东西。点击卡片可以进入文章详情页。</p>
+      </article>
+    </a>
+
+    <a class="post-link" href="articles/static-site.html">
+      <article class="post-card">
+        <h2 class="post-title">静态网站搭建心得</h2>
+        <div class="post-meta">2026-08-30 · 技术</div>
+        <p class="post-excerpt">从零开始搭建一个纯静态博客，不需要服务器、不需要数据库，一个 HTML 文件就能跑起来。本文分享开屏动画和自适应背景的实现思路。</p>
+      </article>
+    </a>
+
+    <a class="post-link" href="articles/sample.html">
+      <article class="post-card">
+        <h2 class="post-title">示例文章标题</h2>
+        <div class="post-meta">2026-08-29 · 分类</div>
+        <p class="post-excerpt">这是一篇示例文章的摘要。你可以在 index.html 中找到 .post-card 部分，复制修改即可新增文章卡片。</p>
+      </article>
+    </a>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>© 2026 我的博客 · Powered by 纯静态 HTML</p>
+  </footer>
+
+</div>
+
+<script>
+/* ========== 开屏动画控制 ========== */
+(function () {
+  const splash   = document.getElementById('splash');
+  const video    = document.getElementById('splashVideo');
+  const skipBtn  = document.getElementById('skipBtn');
+
+  // 播放结束自动淡出
+  video.addEventListener('ended', hideSplash);
+
+  // 点击跳过立即淡出
+  skipBtn.addEventListener('click', hideSplash);
+
+  // 视频加载失败时也直接进入主页，不让用户卡在黑屏
+  video.addEventListener('error', hideSplash);
+
+  // 根据屏幕宽度选择手机或电脑的开屏视频
+  // 屏幕宽度 < 768px 视为手机（竖屏视频），否则为电脑（横屏视频）
+  const isMobile = window.innerWidth < 768;
+  const baseName = isMobile ? '开屏动画-手机' : '开屏动画';
+
+  // 检测浏览器支持的视频格式，优先 mp4，其次 webm
+  let src = '';
+  if (video.canPlayType('video/mp4')) {
+    src = baseName + '.mp4';
+  } else if (video.canPlayType('video/webm')) {
+    src = baseName + '.webm';
+  }
+
+  if (src) {
+    video.src = src;
+    video.play();
+  } else {
+    // 浏览器两种格式都不支持，直接进入主页
+    hideSplash();
+  }
+
+  function hideSplash() {
+    splash.classList.add('hide');
+    // 淡出动画结束后移除节点，释放视频内存
+    setTimeout(function () {
+      if (splash.parentNode) splash.parentNode.removeChild(splash);
+    }, 900);
+  }
+})();
+</script>
+
+</body>
+</html>

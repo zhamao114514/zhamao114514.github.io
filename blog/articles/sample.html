@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>示例文章标题 - 我的博客</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  min-height: 100vh;
+}
+
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: url('../背景.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+.background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.6) 100%);
+}
+
+.article-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 48px 24px 60px;
+}
+
+.back-btn {
+  display: inline-block;
+  margin-bottom: 28px;
+  padding: 8px 20px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 14px;
+  backdrop-filter: blur(8px);
+  transition: background 0.3s, transform 0.2s;
+}
+.back-btn:hover {
+  background: rgba(255,255,255,0.2);
+  transform: translateX(-4px);
+}
+
+.article-card {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 44px 48px;
+  animation: fadeInUp 0.8s ease both;
+}
+
+.article-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.article-meta {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+.article-content p {
+  font-size: 16px;
+  line-height: 1.9;
+  color: rgba(255,255,255,0.88);
+  margin-bottom: 20px;
+}
+
+.article-content h2 {
+  font-size: 21px;
+  margin: 36px 0 16px;
+  padding-left: 12px;
+  border-left: 4px solid rgba(255,255,255,0.5);
+}
+
+.article-content blockquote {
+  margin: 24px 0;
+  padding: 16px 24px;
+  background: rgba(255,255,255,0.06);
+  border-left: 3px solid rgba(255,255,255,0.35);
+  border-radius: 0 8px 8px 0;
+  color: rgba(255,255,255,0.75);
+  font-style: italic;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .article-wrap { padding: 32px 16px 48px; }
+  .article-card { padding: 28px 24px; }
+  .article-title { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+
+<div class="background"></div>
+
+<div class="article-wrap">
+  <a class="back-btn" href="../index.html">← 返回首页</a>
+
+  <article class="article-card">
+    <h1 class="article-title">示例文章标题</h1>
+    <div class="article-meta">2026-08-29 · 分类</div>
+
+    <div class="article-content">
+      <p>这是一篇示例文章，用来展示文章页面的排版效果。你可以把它当作模板，复制后修改内容即可创建新文章。</p>
+
+      <h2>如何新增一篇文章</h2>
+      <p>1. 在 <code>articles/</code> 文件夹下复制任意一篇现有文章，重命名为你的文章文件名（如 <code>my-post.html</code>）。</p>
+      <p>2. 打开新文件，修改 <code>&lt;title&gt;</code>、文章标题、日期分类和正文内容。</p>
+      <p>3. 回到首页 <code>index.html</code>，在文章列表区域复制一个 <code>.post-card</code> 块，把链接指向新文章，修改标题和摘要。</p>
+
+      <blockquote>提示：文章文件名建议用英文或拼音，避免中文文件名在某些服务器上出现编码问题。</blockquote>
+
+      <h2>文章页面支持的样式</h2>
+      <p>当前文章模板内置了以下排版元素：段落、二级标题（左侧竖线装饰）、引用块（左侧色条 + 斜体）、行内代码。直接在正文中使用对应的 HTML 标签即可。</p>
+
+      <p>如果需要更多样式（如图片、表格、代码块等），可以在 <code>&lt;style&gt;</code> 中自行扩展。</p>
+    </div>
+  </article>
+</div>
+
+</body>
+</html>
