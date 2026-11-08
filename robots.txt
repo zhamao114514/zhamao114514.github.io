@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://moyouqian.top/sitemap.xml
